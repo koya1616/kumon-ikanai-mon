@@ -39,10 +39,11 @@ app.use(secureHeaders());
 
 // ヘルスチェックは認証の前に公開する (監視・死活確認のため)
 app.get("/health", (c) => c.json({ ok: true }));
-app.get("/", (c) => c.html(html));
 
 // Basic認証: デフォルト認証情報へのフォールバックは禁止 (fail-closed)。
 // BASIC_USER / BASIC_PASS 未設定は 500 で明示的に落とす。
+// NOTE: "/" はこのミドルウェアより後に登録すること (Honoは登録順に実行されるため、
+// 先に登録すると認証をすり抜けて公開されてしまう)。公開するのは /health のみ。
 app.use("*", async (c, next) => {
   const username = c.env.BASIC_USER;
   const password = c.env.BASIC_PASS;
@@ -52,9 +53,20 @@ app.use("*", async (c, next) => {
   return basicAuth({ username, password })(c, next);
 });
 
+app.get("/", (c) => c.html(html));
+
 // 統一エラーレスポンス: { error: string }
+// NOTE: basicAuthはmessageなし・WWW-Authenticate付きresで401を投げる。
+// そのままJSON化すると {"error":""} になり、チャレンジヘッダが無いと
+// ブラウザがログイン画面を出さないため、401はヘッダ転送＋文言補完する。
 app.onError((err, c) => {
   if (err instanceof HTTPException) {
+    if (err.status === 401) {
+      const challenge =
+        err.getResponse().headers.get("WWW-Authenticate") ?? 'Basic realm="Secure Area"';
+      c.header("WWW-Authenticate", challenge);
+      return c.json({ error: err.message || "認証が必要です" }, 401);
+    }
     return c.json({ error: err.message }, err.status);
   }
   console.error(err);
