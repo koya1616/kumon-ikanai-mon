@@ -934,15 +934,26 @@
             { class: "play-body" },
             h(
               "div",
-              { class: "card mt" },
+              { class: "card resume-card" },
               h("h1", { class: "title-md", text: "前回のつづきがあります" }),
-              h("p", {
-                class: "muted",
-                text: done + " / " + total + "問まで回答ずみです。同じ並び順で再開できます。",
+              h("div", {
+                class: "resume-count tnum",
+                text: done + " / " + total + " 問まで回答ずみ",
               }),
               h(
                 "div",
-                { class: "row mt", style: "justify-content:center" },
+                { class: "resume-bar", "aria-hidden": "true" },
+                h("i", {
+                  style: "width:" + (total ? (done / total) * 100 : 0) + "%",
+                }),
+              ),
+              h("p", {
+                class: "muted",
+                text: "同じ並び順で再開できます。",
+              }),
+              h(
+                "div",
+                { class: "resume-actions" },
                 h("button", {
                   type: "button",
                   class: "btn btn-primary",
