@@ -818,6 +818,36 @@
     }
     return a;
   }
+  // 中断からの再開: 自分の未完了attemptはlocalStorageに保持する。
+  // attempts自体にユーザー概念がなく全体共有のため、他人の挑戦を拾わないよう
+  // サーバ状態の検証と組み合わせる (表示順もここに保存し、再開時の並びを復元する)。
+  function resumeKey(quizId) {
+    return "kmon:resume:" + quizId;
+  }
+  function readResume(quizId) {
+    try {
+      var raw = localStorage.getItem(resumeKey(quizId));
+      if (!raw) return null;
+      var v = JSON.parse(raw);
+      if (!v || !v.attemptId || !Array.isArray(v.order) || !v.order.length) return null;
+      return v;
+    } catch {
+      return null;
+    }
+  }
+  function writeResume(quizId, attemptId, order) {
+    try {
+      localStorage.setItem(
+        resumeKey(quizId),
+        JSON.stringify({ attemptId: attemptId, order: order }),
+      );
+    } catch {}
+  }
+  function clearResume(quizId) {
+    try {
+      localStorage.removeItem(resumeKey(quizId));
+    } catch {}
+  }
   function viewPlay(root, params) {
     var quizId = params[0];
     var ses = null;
@@ -834,59 +864,237 @@
       ),
     );
 
-    Promise.all([
-      api("/api/quizzes/" + quizId + "/play"),
-      api("/api/quizzes/" + quizId + "/attempts", { method: "POST" }),
-      loadTree(),
-    ])
-      .then(function (r) {
-        var meta = r[0],
-          started = r[1];
-        ses = {
-          attemptId: started.attemptId,
-          quiz: meta.quiz,
-          questions: shuffle(started.questions || []),
-          index: 0,
-          score: 0,
-          answers: [],
-          answered: false,
-        };
-        state.session = ses;
-        build();
-        showQuestion();
-      })
-      .catch(function (e) {
-        clear(root);
-        root.appendChild(
+    // 再開チェック: 自分の未完了が残っていれば「つづき/はじめ」を選ばせる。
+    // 順序不明・不整合の場合は安全側で新規開始 (position前提の復元を壊さないため)。
+    var saved = readResume(quizId);
+    if (saved) {
+      api("/api/attempts/" + saved.attemptId)
+        .then(function (st) {
+          if (
+            !st ||
+            st.completedAt ||
+            st.quizId !== quizId ||
+            !st.questions ||
+            st.questions.length !== saved.order.length ||
+            !st.answers ||
+            !st.answers.length ||
+            st.answers.length >= st.questions.length
+          ) {
+            if (st && st.completedAt) clearResume(quizId);
+            startNew();
+            return;
+          }
+          var byId = {};
+          st.questions.forEach(function (q) {
+            byId[q.attemptQuestionId] = q;
+          });
+          var ordered = saved.order.map(function (id) {
+            return byId[id];
+          });
+          if (
+            ordered.some(function (q) {
+              return !q;
+            })
+          ) {
+            clearResume(quizId);
+            startNew();
+            return;
+          }
+          var ansById = {};
+          st.answers.forEach(function (a) {
+            ansById[a.attemptQuestionId] = a;
+          });
+          // 回答は表示順のprefixのはず。崩れていたら新規開始する。
+          for (var i = 0; i < st.answers.length; i++) {
+            if (!ansById[ordered[i].attemptQuestionId]) {
+              clearResume(quizId);
+              startNew();
+              return;
+            }
+          }
+          showResumeChoice(st, ordered, ansById);
+        })
+        .catch(function () {
+          startNew();
+        });
+    } else {
+      startNew();
+    }
+
+    function showResumeChoice(st, ordered, ansById) {
+      clear(root);
+      var done = st.answers.length,
+        total = ordered.length;
+      root.appendChild(
+        h(
+          "div",
+          { class: "play" },
           h(
             "div",
-            { class: "play" },
+            { class: "play-body" },
             h(
               "div",
-              { class: "play-body" },
+              { class: "card mt" },
+              h("h1", { class: "title-md", text: "前回のつづきがあります" }),
+              h("p", {
+                class: "muted",
+                text: done + " / " + total + "問まで回答ずみです。同じ並び順で再開できます。",
+              }),
               h(
                 "div",
-                { class: "card mt" },
-                emptyState("！", "このクイズは開始できません", e.message),
-              ),
-              h(
-                "div",
-                { class: "row", style: "justify-content:center" },
+                { class: "row mt", style: "justify-content:center" },
+                h("button", {
+                  type: "button",
+                  class: "btn btn-primary",
+                  text: "つづきから",
+                  on: {
+                    click: function () {
+                      restoreSession(st, ordered, ansById);
+                    },
+                  },
+                }),
                 h("button", {
                   type: "button",
                   class: "btn",
-                  text: "戻る",
+                  text: "はじめから",
                   on: {
                     click: function () {
-                      history.back();
+                      startNew();
                     },
                   },
                 }),
               ),
             ),
           ),
-        );
-      });
+        ),
+      );
+    }
+
+    function restoreSession(st, ordered, ansById) {
+      clear(root);
+      root.appendChild(
+        h(
+          "div",
+          { class: "play" },
+          h(
+            "div",
+            { class: "play-body" },
+            h("div", { class: "muted mt", text: "つづきを読み込んでいます…" }),
+          ),
+        ),
+      );
+      Promise.all([api("/api/quizzes/" + quizId + "/play"), loadTree()])
+        .then(function (r) {
+          var meta = r[0];
+          var answers = [],
+            score = 0;
+          for (var i = 0; i < st.answers.length; i++) {
+            var q = ordered[i],
+              a = ansById[q.attemptQuestionId];
+            if (a.correct) score++;
+            answers.push({
+              q: q,
+              choice: a.choice,
+              ok: a.correct,
+              correct: a.correctAnswer,
+              exp: a.explanation || "",
+            });
+          }
+          ses = {
+            attemptId: st.attemptId,
+            quiz: meta.quiz,
+            questions: ordered,
+            index: answers.length,
+            score: score,
+            answers: answers,
+            answered: false,
+          };
+          state.session = ses;
+          build();
+          showQuestion();
+          toast("前回のつづきから再開しました", "");
+        })
+        .catch(function () {
+          clearResume(quizId);
+          startNew();
+        });
+    }
+
+    function startNew() {
+      clear(root);
+      root.appendChild(
+        h(
+          "div",
+          { class: "play" },
+          h(
+            "div",
+            { class: "play-body" },
+            h("div", { class: "muted mt", text: "出題を準備しています…" }),
+          ),
+        ),
+      );
+      Promise.all([
+        api("/api/quizzes/" + quizId + "/play"),
+        api("/api/quizzes/" + quizId + "/attempts", { method: "POST" }),
+        loadTree(),
+      ])
+        .then(function (r) {
+          var meta = r[0],
+            started = r[1];
+          var shuffled = shuffle(started.questions || []);
+          writeResume(
+            quizId,
+            started.attemptId,
+            shuffled.map(function (q) {
+              return q.attemptQuestionId;
+            }),
+          );
+          ses = {
+            attemptId: started.attemptId,
+            quiz: meta.quiz,
+            questions: shuffled,
+            index: 0,
+            score: 0,
+            answers: [],
+            answered: false,
+          };
+          state.session = ses;
+          build();
+          showQuestion();
+        })
+        .catch(function (e) {
+          clear(root);
+          root.appendChild(
+            h(
+              "div",
+              { class: "play" },
+              h(
+                "div",
+                { class: "play-body" },
+                h(
+                  "div",
+                  { class: "card mt" },
+                  emptyState("！", "このクイズは開始できません", e.message),
+                ),
+                h(
+                  "div",
+                  { class: "row", style: "justify-content:center" },
+                  h("button", {
+                    type: "button",
+                    class: "btn",
+                    text: "戻る",
+                    on: {
+                      click: function () {
+                        history.back();
+                      },
+                    },
+                  }),
+                ),
+              ),
+            ),
+          );
+        });
+    }
 
     function build() {
       clear(root);
@@ -1031,14 +1239,10 @@
                 text: ok ? "○" : "×",
                 "aria-hidden": "true",
               }),
-              h(
-                "span",
-                { text: ok ? "正解！" : "不正解… 正解は " + res.correctAnswer + " 番" },
-              ),
+              h("span", { text: ok ? "正解！" : "不正解… 正解は " + res.correctAnswer + " 番" }),
               h("span", {
                 class: "sheet-score",
-                text:
-                  "現在 " + ses.score + " / " + (ses.index + 1) + " 正解",
+                text: "現在 " + ses.score + " / " + (ses.index + 1) + " 正解",
               }),
               h("span", { class: "kbd", text: "Enter" }),
             ),
@@ -1075,7 +1279,7 @@
     function quit() {
       confirmDialog({
         title: "途中でやめますか？",
-        message: "ここまでの回答は記録されますが、この挑戦は未完了として残ります。",
+        message: "ここまでの回答は記録されます。このブラウザからは次回つづきから再開できます。",
         okLabel: "やめる",
         danger: true,
       }).then(function (yes) {
@@ -1116,7 +1320,12 @@
     root.appendChild(hero);
     hero.appendChild(h("div", { class: "muted", text: "採点中…" }));
 
+    var resumeQuizId = ses.quiz.id;
     api("/api/attempts/" + ses.attemptId + "/complete", { method: "POST" })
+      .then(function (done) {
+        clearResume(resumeQuizId);
+        return done;
+      })
       .catch(function () {
         return { score: ses.score, total: total };
       })

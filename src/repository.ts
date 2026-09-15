@@ -513,6 +513,68 @@ export async function getCategoryTree(db: DB): Promise<CategoryTreeNode[]> {
 
 // ---------- Attempt (解答結果の蓄積) ----------
 
+/** 再開用: attemptの状態 (出題スナップショット + 回答済み分の結果) を返す */
+export interface AttemptStateAnswer {
+  attemptQuestionId: number;
+  choice: number;
+  correct: boolean;
+  correctAnswer: number;
+  explanation: string;
+}
+
+export async function getAttemptState(
+  db: DB,
+  attemptId: number,
+): Promise<{
+  attemptId: number;
+  quizId: number;
+  completedAt: string | null;
+  questions: PlayQuestion[];
+  answers: AttemptStateAnswer[];
+} | null> {
+  const attempt = await db
+    .prepare(
+      'SELECT id, quiz_id AS "quizId", completed_at AS "completedAt" FROM attempts WHERE id = ?',
+    )
+    .bind(attemptId)
+    .first<{ id: number; quizId: number; completedAt: string | null }>();
+  if (!attempt) return null;
+  const questions = await listAttemptPlayQuestions(db, attemptId);
+  const { results } = await db
+    .prepare(
+      `SELECT aa.attempt_question_id AS "attemptQuestionId",
+        aa.choice_position AS "choice", aa.correct AS "correct",
+        (SELECT position FROM question_choices
+          WHERE question_version_id = aq.question_version_id AND is_correct = 1) AS "correctAnswer",
+        v.explanation AS "explanation"
+       FROM attempt_answers aa
+       JOIN attempt_questions aq ON aq.id = aa.attempt_question_id
+       JOIN question_versions v ON v.id = aq.question_version_id
+       WHERE aq.attempt_id = ? ORDER BY aq.position`,
+    )
+    .bind(attemptId)
+    .all<{
+      attemptQuestionId: number;
+      choice: number;
+      correct: number;
+      correctAnswer: number | null;
+      explanation: string | null;
+    }>();
+  return {
+    attemptId: attempt.id,
+    quizId: attempt.quizId,
+    completedAt: attempt.completedAt,
+    questions,
+    answers: results.map((r) => ({
+      attemptQuestionId: r.attemptQuestionId,
+      choice: r.choice,
+      correct: r.correct === 1,
+      correctAnswer: Number(r.correctAnswer ?? 0),
+      explanation: r.explanation ?? "",
+    })),
+  };
+}
+
 /** 挑戦開始: attempts行 + 現versionのスナップショットをattempt_questionsに作成 */
 export async function createAttempt(
   db: DB,
@@ -691,9 +753,9 @@ export async function listAttemptSummaries(db: DB): Promise<AttemptSummary[]> {
     .prepare(
       `SELECT quiz_id AS "quizId", COUNT(*) AS "attemptCount",
         MAX(score) AS "bestScore",
-        (SELECT total FROM attempts a2 WHERE a2.quiz_id = attempts.quiz_id ORDER BY score DESC, id DESC LIMIT 1) AS "bestTotal",
+        (SELECT total FROM attempts a2 WHERE a2.quiz_id = attempts.quiz_id AND a2.completed_at IS NOT NULL ORDER BY score DESC, id DESC LIMIT 1) AS "bestTotal",
         MAX(completed_at) AS "lastCompletedAt"
-       FROM attempts GROUP BY quiz_id`,
+       FROM attempts WHERE completed_at IS NOT NULL GROUP BY quiz_id`,
     )
     .all<AttemptSummary>();
   return results;

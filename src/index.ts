@@ -440,6 +440,15 @@ app.post("/api/attempts/:id/answers", zValidator("json", answerBodySchema, hook)
   }
 });
 
+// 挑戦状態の取得 (中断からの再開用。回答済み分の結果のみ含み、未回答の正解は含まない)
+app.get("/api/attempts/:id", async (c) => {
+  const attemptId = parseIdParam(c.req.param("id"));
+  if (attemptId === undefined) return c.json({ error: "attemptIdが不正です" }, 400);
+  const state = await repo.getAttemptState(c.env.DB, attemptId);
+  if (!state) return c.json({ error: "挑戦がありません" }, 404);
+  return c.json(state);
+});
+
 // 挑戦完了 (スコア確定)
 app.post("/api/attempts/:id/complete", async (c) => {
   const attemptId = parseIdParam(c.req.param("id"));
