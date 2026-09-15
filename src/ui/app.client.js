@@ -1479,6 +1479,7 @@
             ),
           ),
         );
+        mainCol.appendChild(jsonImportCard());
         return;
       }
       var cat = A.categories.filter(function (c) {
@@ -1592,6 +1593,7 @@
           list.appendChild(quizRow(q));
         });
         mainCol.appendChild(list);
+        mainCol.appendChild(jsonImportCard());
         return;
       }
       var quiz = A.quizzes.filter(function (q) {
@@ -1766,6 +1768,196 @@
         h("div", { class: "side-title" }, h("span", { text: "新しいクイズ" })),
         h("div", { class: "form-grid cols-3" }, title, diff, st),
         h("div", { class: "row mt", style: "justify-content:flex-end" }, btn),
+      );
+    }
+    // ---- JSON一括取込 (data/quizzes/*.json と同形式をフォームから登録) ----
+    function parseQuizJson(text) {
+      var data = JSON.parse(text);
+      if (!data || typeof data !== "object" || Array.isArray(data))
+        throw new Error("JSONはオブジェクトである必要があります");
+      var category = data.category,
+        topic = data.topic,
+        quiz = data.quiz,
+        questions = data.questions;
+      if (typeof category !== "string" || !category.trim())
+        throw new Error("category は1〜100文字の文字列が必須です");
+      if (typeof topic !== "string" || !topic.trim())
+        throw new Error("topic は1〜100文字の文字列が必須です");
+      if (!quiz || typeof quiz !== "object" || typeof quiz.title !== "string" || !quiz.title.trim())
+        throw new Error("quiz.title は1〜100文字の文字列が必須です");
+      if (!Array.isArray(questions) || questions.length !== QUESTIONS_PER_QUIZ)
+        throw new Error(
+          "questions はちょうど" +
+            QUESTIONS_PER_QUIZ +
+            "問必要です (現在" +
+            (Array.isArray(questions) ? questions.length : "非配列") +
+            "問)",
+        );
+      return {
+        category: category.trim(),
+        topic: topic.trim(),
+        title: quiz.title.trim(),
+        count: questions.length,
+      };
+    }
+    function jsonImportCard() {
+      var ta = h("textarea", {
+        class: "textarea code-input",
+        style: "min-height:180px",
+        placeholder:
+          '{\n  "category": "プログラミング",\n  "topic": "Golang",\n  "quiz": { "title": "Golang基礎1", "difficulty": 1, "status": "draft" },\n  "questions": [ { "statement": "...", "choice1": "...", "choice2": "...", "choice3": "...", "choice4": "...", "answer": 1, "explanation": "..." } ]\n} の形式で貼り付け (10問)',
+        "aria-label": "クイズJSON",
+        spellcheck: "false",
+      });
+      var fileInput = h("input", {
+        type: "file",
+        accept: ".json,application/json",
+        "aria-label": "JSONファイルを選択",
+      });
+      var msg = h("p", {
+        class: "muted",
+        text: "category / topic は同名再利用、quiz重複は中断、status省略時はdraftになります。",
+      });
+      var preview = h("div");
+      var submitBtn = h("button", {
+        type: "button",
+        class: "btn btn-primary",
+        text: "JSONで登録する",
+      });
+      var checkBtn = h("button", { type: "button", class: "btn btn-sm", text: "内容を確認" });
+      var sampleBtn = h("button", {
+        type: "button",
+        class: "btn btn-sm btn-ghost",
+        text: "雛形を入れる",
+      });
+      var check = function () {
+        clear(preview);
+        var raw = ta.value.trim();
+        if (!raw) {
+          msg.textContent = "JSONを貼り付けか、ファイルを選択してください。";
+          return null;
+        }
+        try {
+          var summary = parseQuizJson(raw);
+          msg.textContent = "";
+          preview.appendChild(
+            h(
+              "div",
+              { class: "chip chip-moegi" },
+              h("span", {
+                text:
+                  "「" +
+                  summary.category +
+                  " › " +
+                  summary.topic +
+                  " › " +
+                  summary.title +
+                  "」 " +
+                  summary.count +
+                  "問",
+              }),
+            ),
+          );
+          return JSON.parse(raw);
+        } catch (e) {
+          msg.textContent = "エラー: " + (e && e.message ? e.message : String(e));
+          return null;
+        }
+      };
+      checkBtn.addEventListener("click", check);
+      ta.addEventListener("input", function () {
+        msg.textContent = "";
+        clear(preview);
+      });
+      fileInput.addEventListener("change", function () {
+        var f = fileInput.files && fileInput.files[0];
+        if (!f) return;
+        var reader = new FileReader();
+        reader.onload = function () {
+          ta.value = String(reader.result || "");
+          check();
+        };
+        reader.onerror = function () {
+          msg.textContent = "エラー: ファイルを読み込めませんでした";
+        };
+        reader.readAsText(f);
+      });
+      sampleBtn.addEventListener("click", function () {
+        ta.value = JSON.stringify(
+          {
+            category: "プログラミング",
+            topic: "Golang",
+            quiz: { title: "Golang基礎1", difficulty: 1, status: "draft" },
+            questions: [
+              {
+                statement: "問題文",
+                choice1: "選択肢1",
+                choice2: "選択肢2",
+                choice3: "選択肢3",
+                choice4: "選択肢4",
+                answer: 1,
+                explanation: "解説",
+              },
+            ],
+          },
+          null,
+          2,
+        );
+        msg.textContent = "雛形を入れました。questionsを10問に増やして登録してください。";
+        clear(preview);
+        ta.focus();
+      });
+      submitBtn.addEventListener("click", function () {
+        var body = check();
+        if (!body) {
+          if (!msg.textContent) msg.textContent = "エラー: 先に内容を確認してください";
+          return;
+        }
+        submitBtn.disabled = true;
+        msg.textContent = "登録中…";
+        api("/api/quizzes/import", { method: "POST", body: body })
+          .then(function (r) {
+            toast("クイズを登録しました (" + r.count + "問)", "ok");
+            state.tree = null;
+            ta.value = "";
+            fileInput.value = "";
+            clear(preview);
+            msg.textContent = "";
+            go("#/admin/q/" + r.quizId);
+            if (location.hash === "#/admin/q/" + r.quizId) refreshAll();
+            else refreshAll();
+          })
+          .catch(function (e) {
+            msg.textContent = "エラー: " + e.message;
+            toast(e.message, "ng");
+          })
+          .then(function () {
+            submitBtn.disabled = false;
+          });
+      });
+      return h(
+        "div",
+        { class: "card card-pad" },
+        h("div", { class: "side-title" }, h("span", { text: "JSONで一括登録 (10問)" })),
+        h(
+          "div",
+          { class: "field" },
+          h("span", { class: "label", text: "JSONファイル" }),
+          fileInput,
+        ),
+        h(
+          "div",
+          { class: "field mt" },
+          h("span", { class: "label", text: "JSON貼り付け" }),
+          ta,
+          h("span", {
+            class: "muted",
+            text: "data/quizzes/example.json と同形式。questionsは10問ちょうど。",
+          }),
+        ),
+        h("div", { class: "row mt wrap" }, checkBtn, sampleBtn, preview),
+        msg,
+        h("div", { class: "row mt", style: "justify-content:flex-end" }, submitBtn),
       );
     }
     function quizRow(q) {

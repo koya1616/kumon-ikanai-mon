@@ -15,6 +15,7 @@ import {
   questionCreateSchema,
   questionSchema,
   quizBodySchema,
+  quizImportSchema,
   quizPatchSchema,
   topicBodySchema,
   topicPatchSchema,
@@ -216,6 +217,69 @@ app.post("/api/quizzes", zValidator("json", quizBodySchema, hook), async (c) => 
     return c.json({ id }, 201);
   } catch {
     return c.json({ error: "同名のquizが既にあります / topicが存在しません" }, 409);
+  }
+});
+
+// JSON一括取込: category/topic を find-or-create し、quiz + 10問を作成する。
+// scripts/add-quiz.mjs と同等の処理を管理画面フォームから行うためのエンドポイント。
+// 同名quizが同一topicに存在する場合は409で中断する (誤上書き防止)。
+app.post("/api/quizzes/import", zValidator("json", quizImportSchema, hook), async (c) => {
+  const input = c.req.valid("json");
+
+  // 1. category find-or-create
+  const categories = await repo.listCategories(c.env.DB);
+  let categoryId: number | undefined = categories.find((x) => x.title === input.category)?.id;
+  if (categoryId === undefined) {
+    try {
+      categoryId = await repo.createCategory(c.env.DB, input.category);
+    } catch {
+      return c.json({ error: "同名のcategoryが既にあります" }, 409);
+    }
+  }
+
+  // 2. topic find-or-create
+  const topics = await repo.listTopics(c.env.DB, categoryId);
+  let topicId: number | undefined = topics.find((x) => x.title === input.topic)?.id;
+  if (topicId === undefined) {
+    try {
+      topicId = await repo.createTopic(c.env.DB, categoryId, input.topic);
+    } catch {
+      return c.json({ error: "同名のtopicが既にあります / categoryが存在しません" }, 409);
+    }
+  }
+
+  // 3. quiz 重複チェック (同一topicに同名があれば中断)
+  const existing = await repo.listQuizzes(c.env.DB, { topicId });
+  if (existing.some((q) => q.title === input.quiz.title)) {
+    return c.json(
+      { error: "同名のquizが既にあります。既存の編集は管理画面から行ってください" },
+      409,
+    );
+  }
+
+  // 4. quiz作成 + 10問登録
+  let quizId: number;
+  try {
+    quizId = await repo.createQuiz(
+      c.env.DB,
+      topicId,
+      input.quiz.title,
+      input.quiz.difficulty,
+      input.quiz.status,
+    );
+  } catch {
+    return c.json({ error: "同名のquizが既にあります / topicが存在しません" }, 409);
+  }
+  try {
+    const count = await repo.replaceQuestions(
+      c.env.DB,
+      quizId,
+      input.questions.map((q) => ({ ...q, explanation: q.explanation ?? "" })),
+    );
+    return c.json({ categoryId, topicId, quizId, count }, 201);
+  } catch (e) {
+    // quizだけ作成済みの状態。管理画面から問題を追記できるようidを返す
+    return c.json({ error: (e as Error).message, quizId, topicId, categoryId }, 400);
   }
 });
 

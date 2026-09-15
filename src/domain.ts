@@ -150,6 +150,20 @@ export const questionBatchSchema = z.object({
   questions: z.array(questionSchema, { message: "quizIdとquestions配列が必要です" }),
 });
 
+// JSON一括取込用 (data/quizzes/*.json と同形式。管理画面フォーム + scripts/add-quiz.mjs 共通)
+export const quizImportSchema = z.object({
+  category: titleSchema,
+  topic: titleSchema,
+  quiz: z.object({
+    title: titleSchema,
+    difficulty: difficultySchema.default(1),
+    status: quizStatusSchema.default("draft"),
+  }),
+  questions: z
+    .array(questionSchema, { message: "questionsはちょうど10問必要です" })
+    .length(QUESTIONS_PER_QUIZ, { message: `questionsはちょうど${QUESTIONS_PER_QUIZ}問必要です` }),
+});
+
 export const answerBodySchema = z.object({
   attemptQuestionId: z.coerce
     .number()
