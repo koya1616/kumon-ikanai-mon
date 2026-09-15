@@ -5,6 +5,8 @@
   "compatibility_date": "2026-09-01",
   "compatibility_flags": ["nodejs_compat"],
   "observability": { "enabled": true },
+  // フロントエンドの CSS / JS は文字列として bundle し、view.ts で HTML に埋め込む
+  "rules": [{ "type": "Text", "globs": ["**/*.css", "**/*.client.js"], "fallthrough": true }],
   "d1_databases": [
     {
       "binding": "DB",
