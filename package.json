@@ -1,0 +1,44 @@
+{
+  "name": "kumon-ikanai-mon",
+  "version": "1.0.0",
+  "description": "大分類>中分類>小分類(10問) 4択クイズ - Hono + Cloudflare Workers + D1",
+  "keywords": [],
+  "homepage": "https://github.com/koya1616/kumon-ikanai-mon#readme",
+  "bugs": {
+    "url": "https://github.com/koya1616/kumon-ikanai-mon/issues"
+  },
+  "license": "ISC",
+  "author": "",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/koya1616/kumon-ikanai-mon.git"
+  },
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "db:migrate:local": "wrangler d1 migrations apply kumon-ikanai-mon-db --local",
+    "db:seed:local": "wrangler d1 execute kumon-ikanai-mon-db --local --file=./seed.sql",
+    "db:migrate:remote": "wrangler d1 migrations apply kumon-ikanai-mon-db --remote",
+    "db:create": "wrangler d1 create kumon-ikanai-mon-db",
+    "typecheck": "tsc --noEmit",
+    "lint": "oxlint",
+    "lint:fix": "oxlint --fix",
+    "format": "oxfmt",
+    "format:check": "oxfmt --check"
+  },
+  "dependencies": {
+    "@hono/zod-validator": "^0.9.1",
+    "hono": "^4.13.8",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20260915.1",
+    "@types/node": "^26.5.1",
+    "oxfmt": "^0.68.0",
+    "oxlint": "^1.83.0",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.1",
+    "wrangler": "^4.131.2"
+  }
+}

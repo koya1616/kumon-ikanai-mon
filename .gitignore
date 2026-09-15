@@ -1,0 +1,26 @@
+# dependencies (pnpm)
+node_modules/
+package-lock.json
+yarn.lock
+npm-debug.log*
+pnpm-debug.log*
+
+# pnpm store / virtual
+.pnpm-store/
+
+# build
+dist/
+.wrangler/
+.dev.vars
+
+# logs
+*.log
+npm-debug.log*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# env
+.env
+.env.local

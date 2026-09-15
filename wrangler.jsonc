@@ -1,0 +1,17 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "kumon-ikanai-mon",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-09-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "observability": { "enabled": true },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "kumon-ikanai-mon-db",
+      "database_id": "3f9ee445-7ea2-4edd-a1ed-62567300891f",
+      "migrations_dir": "migrations",
+    },
+  ],
+  "vars": {},
+}
