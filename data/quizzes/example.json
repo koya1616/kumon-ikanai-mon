@@ -1,0 +1,101 @@
+{
+  "category": "プログラミング",
+  "topic": "TypeScript",
+  "quiz": {
+    "title": "TypeScript基礎1",
+    "difficulty": 2,
+    "status": "draft"
+  },
+  "questions": [
+    {
+      "statement": "次のプログラムを実行すると何が出力される？\n```ts\nconst nums: number[] = [1, 2, 3];\nconsole.log(nums.length + nums[0]);\n```",
+      "choice1": "3",
+      "choice2": "4",
+      "choice3": "31",
+      "choice4": "コンパイルエラーになる",
+      "answer": 2,
+      "explanation": "```ts\nnums.length は 3、nums[0] は 1 なので 3 + 1 = 4 です。\n```\n配列の長さとインデックス参照の基本問題です。"
+    },
+    {
+      "statement": "`string[]` の意味は？",
+      "choice1": "文字列1文字",
+      "choice2": "文字列の配列",
+      "choice3": "文字列か配列か分からない型",
+      "choice4": "固定長のタプル",
+      "answer": 2,
+      "explanation": "string[] は文字列の配列型です。"
+    },
+    {
+      "statement": "`unknown` 型の値を使う際の正しい扱いは？",
+      "choice1": "そのまま何でもできる",
+      "choice2": "型を絞ってから使う",
+      "choice3": "any と同じで常に危険",
+      "choice4": "代入だけできて参照はできない",
+      "answer": 2,
+      "explanation": "unknown は型ガードや絞り込みを経てから使うのが基本です。"
+    },
+    {
+      "statement": "`interface` と `type` の違いとして正しいものは？",
+      "choice1": "interface は拡張（extends）ができる",
+      "choice2": "type は拡張できない",
+      "choice3": "interface はプリミティブに使える",
+      "choice4": "type は宣言マージされる",
+      "answer": 1,
+      "explanation": "interface は extends / 宣言マージが可能。type はユニオンやプリミティブの別名に向きます。"
+    },
+    {
+      "statement": "`?.`（オプショナルチェーン）の効果は？",
+      "choice1": "必ず例外を投げる",
+      "choice2": "null/undefined なら短絡して undefined を返す",
+      "choice3": "型を number に変える",
+      "choice4": "非同期処理を待つ",
+      "answer": 2,
+      "explanation": "`a?.b` は a が null/undefined なら評価を止めて undefined を返します。"
+    },
+    {
+      "statement": "`??`（Null合体）の動作は？",
+      "choice1": "左が null/undefined のとき右を返す",
+      "choice2": "左が 0 のときも右を返す",
+      "choice3": "常に右を返す",
+      "choice4": "論理積と同じ",
+      "answer": 1,
+      "explanation": "`a ?? b` は a が null/undefined のときだけ b を返します（0 や '' はそのまま）。"
+    },
+    {
+      "statement": "`Promise<string>` の resolve 値の取り方は？",
+      "choice1": "await または then で受け取る",
+      "choice2": "直接 string として扱える",
+      "choice3": "JSON.parse する",
+      "choice4": "Number() で囲む",
+      "answer": 1,
+      "explanation": "Promise の中身は await / then で取り出します。"
+    },
+    {
+      "statement": "`readonly string[]` にできる操作は？",
+      "choice1": "push できる",
+      "choice2": "読み取りはできるが push は型エラー",
+      "choice3": "代入も参照もできない",
+      "choice4": "pop のみできる",
+      "answer": 2,
+      "explanation": "readonly 配列は参照OK・変更操作は型エラーになります。"
+    },
+    {
+      "statement": "次の `id` を呼び出した結果の型は？\n```ts\nfunction id<T>(x: T): T {\n  return x;\n}\nconst s = id(\"hello\");\n```",
+      "choice1": "unknown",
+      "choice2": "any",
+      "choice3": "string",
+      "choice4": "T のまま決まらない",
+      "answer": 3,
+      "explanation": "呼び出し時に `T = string` と推論されるため、`s` の型は `string` です。"
+    },
+    {
+      "statement": "`npx tsc --noEmit` の意味は？",
+      "choice1": "型チェックのみ行い出力しない",
+      "choice2": "JS を出力して実行する",
+      "choice3": "node_modules を削除する",
+      "choice4": "テストを実行する",
+      "answer": 1,
+      "explanation": "--noEmit は emit せず型エラーの有無だけ確認します。"
+    }
+  ]
+}

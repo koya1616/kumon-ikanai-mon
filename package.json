@@ -21,6 +21,7 @@
     "db:seed:local": "wrangler d1 execute kumon-ikanai-mon-db --local --file=./seed.sql",
     "db:migrate:remote": "wrangler d1 migrations apply kumon-ikanai-mon-db --remote",
     "db:create": "wrangler d1 create kumon-ikanai-mon-db",
+    "quiz:add": "node scripts/add-quiz.mjs",
     "typecheck": "tsc --noEmit",
     "lint": "oxlint",
     "lint:fix": "oxlint --fix",
