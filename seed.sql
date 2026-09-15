@@ -14,19 +14,20 @@ DELETE FROM categories;
 DELETE FROM sqlite_sequence;
 PRAGMA foreign_keys = ON;
 
-INSERT INTO categories (id, title) VALUES (1, '算数'), (2, '国語');
+INSERT INTO categories (id, title) VALUES (1, '算数'), (2, '国語'), (3, 'プログラミング');
 INSERT INTO topics (id, category_id, title) VALUES
-  (1, 1, 'たし算'), (2, 1, 'ひき算'), (3, 2, '漢字'), (4, 2, 'ことわざ');
+  (1, 1, 'たし算'), (2, 1, 'ひき算'), (3, 2, '漢字'), (4, 2, 'ことわざ'), (5, 3, 'Golang');
 INSERT INTO quizzes (id, topic_id, title, difficulty, status) VALUES
   (1, 1, 'くり上がりなし', 1, 'published'),
   (2, 1, 'くり上がりあり', 3, 'published'),
   (3, 2, 'くり下がりなし', 1, 'published'),
   (4, 3, '小学1年生の漢字', 2, 'published'),
   (5, 4, 'ことわざ入門', 2, 'published'),
-  (6, 1, 'かけ算 準備中', 2, 'draft');
+  (6, 1, 'かけ算 準備中', 2, 'draft'),
+  (7, 5, 'Golang基礎', 2, 'published');
 
 INSERT INTO questions (id, quiz_id) VALUES
-  (1, 1), (2, 1), (3, 1), (4, 1), (5, 1), (6, 1), (7, 1), (8, 1), (9, 1), (10, 1), (11, 2), (12, 2), (13, 2), (14, 2), (15, 2), (16, 2), (17, 2), (18, 2), (19, 2), (20, 2), (21, 3), (22, 3), (23, 3), (24, 3), (25, 3), (26, 3), (27, 3), (28, 3), (29, 3), (30, 3), (31, 4), (32, 4), (33, 4), (34, 4), (35, 4), (36, 4), (37, 4), (38, 4), (39, 4), (40, 4), (41, 5), (42, 5), (43, 5), (44, 5), (45, 5), (46, 5), (47, 5), (48, 5), (49, 5), (50, 5), (51, 6), (52, 6);
+  (1, 1), (2, 1), (3, 1), (4, 1), (5, 1), (6, 1), (7, 1), (8, 1), (9, 1), (10, 1), (11, 2), (12, 2), (13, 2), (14, 2), (15, 2), (16, 2), (17, 2), (18, 2), (19, 2), (20, 2), (21, 3), (22, 3), (23, 3), (24, 3), (25, 3), (26, 3), (27, 3), (28, 3), (29, 3), (30, 3), (31, 4), (32, 4), (33, 4), (34, 4), (35, 4), (36, 4), (37, 4), (38, 4), (39, 4), (40, 4), (41, 5), (42, 5), (43, 5), (44, 5), (45, 5), (46, 5), (47, 5), (48, 5), (49, 5), (50, 5), (51, 6), (52, 6), (53, 7), (54, 7), (55, 7), (56, 7), (57, 7), (58, 7), (59, 7), (60, 7), (61, 7), (62, 7);
 INSERT INTO question_versions (id, question_id, version, statement, explanation) VALUES
   (1, 1, 1, '2 + 3 は??', '旧バージョン（誤字あり）。'),
   (2, 1, 2, '2 + 3 は？', '2+3=5 です。'),
@@ -413,3 +414,181 @@ INSERT INTO attempt_answers (attempt_question_id, choice_position, choice_text_s
   (28, 3, '13', 1),
   (29, 4, '12', 1),
   (30, 1, '16', 1);
+
+-- Golang基礎 (quiz 7: questions 53-62 / versions 54-63)。問題文は ```go フェンス付き。
+INSERT INTO question_versions (id, question_id, version, statement, explanation) VALUES
+  (54, 53, 1, '次のプログラムを実行すると何が出力される？
+```go
+package main
+
+import "fmt"
+
+func main() {
+    fmt.Println(1 + 2)
+}
+```', '1 + 2 は整数の足し算なので 3 が出力されます。'),
+  (55, 54, 1, '次のプログラムを実行すると何が出力される？
+```go
+package main
+
+import "fmt"
+
+func main() {
+    var x int
+    fmt.Println(x)
+}
+```', 'var x int のように初期値なしで宣言すると、int のゼロ値 0 が入ります。'),
+  (56, 55, 1, '次のプログラムを実行すると何が出力される？
+```go
+package main
+
+import "fmt"
+
+func main() {
+    a := 5
+    fmt.Printf("%T", a)
+}
+```', '5 は整数リテラルなので、短縮変数宣言では int 型と推論されます。%T は型名を出力します。'),
+  (57, 56, 1, '次のプログラムを実行すると何が出力される？
+```go
+package main
+
+import "fmt"
+
+func main() {
+    sum := 0
+    for i := 0; i < 5; i++ {
+        sum += i
+    }
+    fmt.Println(sum)
+}
+```', 'i は 0 から 4 まで進むので、0 + 1 + 2 + 3 + 4 = 10 です。'),
+  (58, 57, 1, '次のプログラムを実行すると何が出力される？
+```go
+package main
+
+import "fmt"
+
+func main() {
+    s := []int{1, 2, 3}
+    fmt.Println(len(s))
+}
+```', 'スライスの要素数は 3 なので、len は 3 を返します。'),
+  (59, 58, 1, '次のプログラムを実行すると何が出力される？
+```go
+package main
+
+import "fmt"
+
+func main() {
+    s := []int{1, 2}
+    s = append(s, 3)
+    fmt.Println(len(s))
+}
+```', 'append で要素が 1 つ増えるので、長さは 3 になります。'),
+  (60, 59, 1, '次のプログラムを実行すると何が出力される？
+```go
+package main
+
+import "fmt"
+
+func main() {
+    m := map[string]int{}
+    fmt.Println(m["a"])
+}
+```', '存在しないキーを読むと、値の型のゼロ値が返ります。int のゼロ値は 0 です。'),
+  (61, 60, 1, '次のプログラムを実行すると何が出力される？
+```go
+package main
+
+import "fmt"
+
+func add(a int, b int) int {
+    return a + b
+}
+
+func main() {
+    fmt.Println(add(2, 3))
+}
+```', 'add(2, 3) は 2 + 3 = 5 を返すので、5 が出力されます。'),
+  (62, 61, 1, '次のプログラムを実行すると何が出力される？
+```go
+package main
+
+import "fmt"
+
+func main() {
+    x := 7
+    if x%2 == 0 {
+        fmt.Println("偶数")
+    } else {
+        fmt.Println("奇数")
+    }
+}
+```', '7 % 2 は 1 なので条件は真にならず、else 側の「奇数」が出力されます。'),
+  (63, 62, 1, '次のプログラムを実行すると何が出力される？
+```go
+package main
+
+import "fmt"
+
+type P struct {
+    Name string
+}
+
+func main() {
+    p := P{Name: "go"}
+    fmt.Println(p.Name)
+}
+```', '構造体のフィールド Name に設定した go が出力されます。');
+INSERT INTO question_choices (question_version_id, position, choice_text, is_correct) VALUES
+  (54, 1, '2', 0),
+  (54, 2, '3', 1),
+  (54, 3, '12', 0),
+  (54, 4, 'エラーになる', 0),
+  (55, 1, '0', 1),
+  (55, 2, '1', 0),
+  (55, 3, '空文字', 0),
+  (55, 4, 'エラーになる', 0),
+  (56, 1, 'string', 0),
+  (56, 2, 'float64', 0),
+  (56, 3, 'int', 1),
+  (56, 4, 'bool', 0),
+  (57, 1, '15', 0),
+  (57, 2, '10', 1),
+  (57, 3, '5', 0),
+  (57, 4, '14', 0),
+  (58, 1, '2', 0),
+  (58, 2, '4', 0),
+  (58, 3, '1', 0),
+  (58, 4, '3', 1),
+  (59, 1, '3', 1),
+  (59, 2, '2', 0),
+  (59, 3, '4', 0),
+  (59, 4, '5', 0),
+  (60, 1, 'コンパイルエラー', 0),
+  (60, 2, '空文字', 0),
+  (60, 3, '0', 1),
+  (60, 4, 'パニックになる', 0),
+  (61, 1, '23', 0),
+  (61, 2, '6', 0),
+  (61, 3, '0', 0),
+  (61, 4, '5', 1),
+  (62, 1, '偶数', 0),
+  (62, 2, '奇数', 1),
+  (62, 3, '7', 0),
+  (62, 4, 'コンパイルエラー', 0),
+  (63, 1, 'P', 0),
+  (63, 2, '空文字', 0),
+  (63, 3, 'go', 1),
+  (63, 4, 'コンパイルエラー', 0);
+UPDATE questions SET current_version_id = 54 WHERE id = 53;
+UPDATE questions SET current_version_id = 55 WHERE id = 54;
+UPDATE questions SET current_version_id = 56 WHERE id = 55;
+UPDATE questions SET current_version_id = 57 WHERE id = 56;
+UPDATE questions SET current_version_id = 58 WHERE id = 57;
+UPDATE questions SET current_version_id = 59 WHERE id = 58;
+UPDATE questions SET current_version_id = 60 WHERE id = 59;
+UPDATE questions SET current_version_id = 61 WHERE id = 60;
+UPDATE questions SET current_version_id = 62 WHERE id = 61;
+UPDATE questions SET current_version_id = 63 WHERE id = 62;

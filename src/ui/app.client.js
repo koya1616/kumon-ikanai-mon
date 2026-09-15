@@ -67,6 +67,91 @@
     return document.getElementById(id);
   };
 
+  // ---------- rich text (```fence コードブロック + `inline` 対応 / XSS-safe) ----------
+  // 問題文・選択肢・解説は textContent 直入れだったため ``` が素通しだった。
+  // textNode + pre/code の DOM組み立てのみで描画し、innerHTML にユーザー入力を渡さない。
+  function appendRichInline(el, text) {
+    var parts = String(text).split(/(`[^`\n]+`)/g);
+    parts.forEach(function (part) {
+      if (!part) return;
+      if (part.length >= 2 && part.charAt(0) === "`" && part.charAt(part.length - 1) === "`") {
+        el.appendChild(h("code", { class: "inline-code", text: part.slice(1, -1) }));
+      } else {
+        var lines = part.split("\n");
+        lines.forEach(function (line, idx) {
+          if (idx) el.appendChild(h("br"));
+          if (line) el.appendChild(document.createTextNode(line));
+        });
+      }
+    });
+  }
+  function appendCodeBlock(el, lang, code) {
+    var label = (lang || "").trim() || "code";
+    var codeEl = h("code", { text: code.replace(/\n$/, "") });
+    codeEl.setAttribute("data-lang", label);
+    var copy = h("button", {
+      type: "button",
+      class: "code-copy",
+      text: "コピー",
+      "aria-label": "コードをコピー",
+    });
+    copy.addEventListener("click", function (e) {
+      e.stopPropagation();
+      var done = function () {
+        copy.textContent = "コピー済み";
+        setTimeout(function () {
+          copy.textContent = "コピー";
+        }, 1200);
+      };
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(code.replace(/\n$/, "")).then(done, done);
+      } else {
+        var ta = document.createElement("textarea");
+        ta.value = code.replace(/\n$/, "");
+        document.body.appendChild(ta);
+        try {
+          ta.select();
+          document.execCommand("copy");
+        } catch {}
+        ta.remove();
+        done();
+      }
+    });
+    el.appendChild(
+      h(
+        "div",
+        { class: "code-block" },
+        h("div", { class: "code-head" }, h("span", { class: "code-lang", text: label }), copy),
+        h("pre", { class: "code-pre" }, codeEl),
+      ),
+    );
+  }
+  function renderRich(el, src) {
+    clear(el);
+    el.classList.add("rich");
+    var text = src == null ? "" : String(src);
+    var re = /```([A-Za-z0-9_+\-#.]*)\s*\n([\s\S]*?)```/g;
+    var last = 0;
+    var m;
+    var found = false;
+    while ((m = re.exec(text))) {
+      found = true;
+      if (m.index > last) appendRichInline(el, text.slice(last, m.index));
+      appendCodeBlock(el, m[1], m[2]);
+      last = m.index + m[0].length;
+    }
+    if (!found) {
+      appendRichInline(el, text);
+      return;
+    }
+    if (last < text.length) appendRichInline(el, text.slice(last));
+  }
+  function richEl(tag, cls, src) {
+    var el = h(tag, { class: cls });
+    renderRich(el, src);
+    return el;
+  }
+
   var ICON = {
     home: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11.5 12 4l9 7.5"/><path d="M5 10v10h5v-6h4v6h5V10"/></svg>',
     admin:
@@ -851,7 +936,7 @@
       ses.answered = false;
       ui.count.textContent = ses.index + 1 + " / " + ses.questions.length;
       ui.num.textContent = "第 " + (ses.index + 1) + " 問";
-      ui.statement.textContent = q.statement;
+      renderRich(ui.statement, q.statement);
       ui.stamp.className = "stamp";
       ui.sheet.classList.remove("is-open");
       Array.prototype.forEach.call(ui.dots.children, function (d, i) {
@@ -861,6 +946,8 @@
       });
       clear(ui.choices);
       q.choices.forEach(function (text, i) {
+        var label = h("span", { class: "choice-label" });
+        renderRich(label, text);
         ui.choices.appendChild(
           h(
             "button",
@@ -874,7 +961,7 @@
               },
             },
             h("span", { class: "choice-key", text: String(i + 1), "aria-hidden": "true" }),
-            h("span", { text: text }),
+            label,
           ),
         );
       });
@@ -922,7 +1009,7 @@
             ),
           );
           ui.sheetCard.appendChild(
-            h("div", { class: "sheet-exp", text: res.explanation || "（解説はありません）" }),
+            richEl("div", "sheet-exp", res.explanation || "（解説はありません）"),
           );
           ui.next = h("button", {
             type: "button",
@@ -1053,6 +1140,14 @@
         ses.answers.forEach(function (a, i) {
           var d = h("details", { class: "review-item" });
           if (!a.ok) d.open = true;
+          var sumStatement = h("span", { class: "review-statement" });
+          renderRich(sumStatement, a.q.statement);
+          var sumWrap = h(
+            "span",
+            { class: "grow" },
+            h("span", { text: "第" + (i + 1) + "問　" }),
+            sumStatement,
+          );
           d.appendChild(
             h(
               "summary",
@@ -1062,23 +1157,22 @@
                 text: a.ok ? "○" : "×",
                 "aria-hidden": "true",
               }),
-              h("span", { text: "第" + (i + 1) + "問　" + a.q.statement }),
+              sumWrap,
             ),
           );
-          d.appendChild(
-            h(
-              "div",
-              { class: "review-body" },
-              h("div", { text: "あなたの回答: " + a.choice + ". " + a.q.choices[a.choice - 1] }),
-              a.ok
-                ? null
-                : h("div", {
-                    style: "color:var(--shu);font-weight:700",
-                    text: "正解: " + a.correct + ". " + a.q.choices[a.correct - 1],
-                  }),
-              a.exp ? h("div", { class: "exp", text: a.exp }) : null,
-            ),
-          );
+          var yourPrefix = h("div", { text: "あなたの回答: " + a.choice + ". " });
+          yourPrefix.appendChild(richEl("span", "review-inline", a.q.choices[a.choice - 1]));
+          var bodyChildren = [yourPrefix];
+          if (!a.ok) {
+            var correctPrefix = h("div", {
+              style: "color:var(--shu);font-weight:700",
+              text: "正解: " + a.correct + ". ",
+            });
+            correctPrefix.appendChild(richEl("span", "review-inline", a.q.choices[a.correct - 1]));
+            bodyChildren.push(correctPrefix);
+          }
+          if (a.exp) bodyChildren.push(richEl("div", "exp", a.exp));
+          d.appendChild(h("div", { class: "review-body" }, bodyChildren));
           review.appendChild(d);
         });
         grid.appendChild(
@@ -1890,14 +1984,17 @@
             renderPills();
             clear(form);
             var d = drafts[cur];
+            var preview = richEl("div", "admin-preview", d.statement || "（プレビュー）");
+            var expPreview = richEl("div", "admin-preview admin-preview-sm", d.explanation || "");
             var statement = h("textarea", {
-              class: "textarea",
-              placeholder: "問題文を入力",
+              class: "textarea code-input",
+              placeholder: "問題文を入力（```js のように ``` で囲むとコードブロックになります）",
               value: d.statement,
               "aria-label": "問題文",
               on: {
                 input: function (e) {
                   d.statement = e.target.value;
+                  renderRich(preview, d.statement || "（プレビュー）");
                   renderPills();
                 },
               },
@@ -1944,12 +2041,13 @@
             var exp = h("textarea", {
               class: "textarea",
               style: "min-height:72px",
-              placeholder: "解説（任意）",
+              placeholder: "解説（任意。``` で囲むとコードブロックになります）",
               value: d.explanation,
               "aria-label": "解説",
               on: {
                 input: function (e) {
                   d.explanation = e.target.value;
+                  renderRich(expPreview, d.explanation || "");
                   renderPills();
                 },
               },
@@ -1968,6 +2066,12 @@
                 { class: "field" },
                 h("span", { class: "label", text: "問題文" }),
                 statement,
+                h("span", {
+                  class: "muted",
+                  text: "改行はそのまま表示・`code` で装飾・```言語名 で囲むとコードブロック＆コピー付きで表示されます",
+                }),
+                h("span", { class: "label", text: "プレビュー" }),
+                preview,
               ),
             );
             form.appendChild(
@@ -1982,7 +2086,13 @@
               ),
             );
             form.appendChild(
-              h("label", { class: "field" }, h("span", { class: "label", text: "解説" }), exp),
+              h(
+                "label",
+                { class: "field" },
+                h("span", { class: "label", text: "解説" }),
+                exp,
+                expPreview,
+              ),
             );
             form.appendChild(
               h(
