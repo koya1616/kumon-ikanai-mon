@@ -340,15 +340,23 @@
   }
 
   // ---------- shared UI pieces ----------
+  // pct: 0..1, tone: "is-good" | "is-mid" | "is-bad" | "is-full" (旧isFull=true互換)
   function ring(pct, label, size, isFull) {
     var r = 24,
       c = 2 * Math.PI * r;
+    var tone = "";
+    if (isFull === true) tone = "is-full";
+    else if (typeof isFull === "string") tone = isFull;
+    else if (pct >= 1) tone = "is-full";
+    else if (pct >= 0.7) tone = "is-good";
+    else if (pct >= 0.4) tone = "is-mid";
+    else tone = "is-bad";
     var el = h("div", { class: "ring" + (size ? " " + size : "") });
     el.innerHTML =
       '<svg viewBox="0 0 56 56"><circle class="ring-bg" cx="28" cy="28" r="' +
       r +
-      '"/><circle class="ring-fg' +
-      (isFull ? " is-full" : "") +
+      '"/><circle class="ring-fg ' +
+      tone +
       '" cx="28" cy="28" r="' +
       r +
       '" stroke-dasharray="' +
@@ -514,7 +522,7 @@
             { class: "stat" },
             h("div", {
               class: "stat-v tnum",
-              style: "color:var(--shu)",
+              style: "color:var(--moegi)",
               text: String(totals.perfect),
             }),
             h("div", { class: "stat-k", text: "満点" }),
@@ -740,7 +748,7 @@
                 : h(
                     "div",
                     { class: "quiz-row-right" },
-                    h("span", { class: "chip chip-shu", text: "はじめる" }),
+                    h("span", { class: "chip chip-moegi", text: "▶ はじめる" }),
                   )
               : h(
                   "div",
@@ -887,6 +895,7 @@
         ui.dots.appendChild(h("i", { class: "play-dot" }));
       });
       ui.count = h("div", { class: "play-count", "aria-live": "polite" });
+      ui.score = h("div", { class: "play-score", "aria-live": "polite" });
       ui.quit = h("button", {
         type: "button",
         class: "btn btn-icon btn-ghost",
@@ -905,7 +914,7 @@
         h(
           "div",
           { class: "play" },
-          h("div", { class: "play-top" }, ui.quit, ui.dots, ui.count),
+          h("div", { class: "play-top" }, ui.quit, ui.dots, ui.score, ui.count),
           h(
             "div",
             { class: "play-body" },
@@ -931,10 +940,18 @@
       ui.crumb.appendChild(stars(ses.quiz.difficulty));
     }
 
+    function updateScore() {
+      var answered = ses.answers.length;
+      var okCount = ses.score;
+      ui.score.textContent = "○" + okCount + " ×" + (answered - okCount);
+      ui.score.className =
+        "play-score" + (answered ? (okCount / answered >= 0.5 ? " is-ok" : " is-ng") : "");
+    }
     function showQuestion() {
       var q = ses.questions[ses.index];
       ses.answered = false;
-      ui.count.textContent = ses.index + 1 + " / " + ses.questions.length;
+      ui.count.textContent = "Q" + (ses.index + 1) + " / " + ses.questions.length;
+      updateScore();
       ui.num.textContent = "第 " + (ses.index + 1) + " 問";
       renderRich(ui.statement, q.statement);
       ui.stamp.className = "stamp";
@@ -990,11 +1007,16 @@
             exp: res.explanation || "",
           });
           Array.prototype.forEach.call(btns, function (b, k) {
-            if (k + 1 === res.correctAnswer) b.classList.add("is-correct");
-            else if (k + 1 === choice) b.classList.add("is-wrong");
-            else b.classList.add("is-dim");
+            if (k + 1 === res.correctAnswer) {
+              b.classList.add("is-correct");
+              b.appendChild(h("span", { class: "choice-mark", text: "○", "aria-hidden": "true" }));
+            } else if (k + 1 === choice) {
+              b.classList.add("is-wrong");
+              b.appendChild(h("span", { class: "choice-mark", text: "×", "aria-hidden": "true" }));
+            } else b.classList.add("is-dim");
           });
           ui.dots.children[ses.index].className = "play-dot " + (ok ? "is-ok" : "is-ng");
+          updateScore();
           ui.stamp.textContent = ok ? "○" : "×";
           ui.stamp.className = "stamp show " + (ok ? "is-ok" : "is-ng");
           var last = ses.index + 1 >= ses.questions.length;
@@ -1004,7 +1026,20 @@
             h(
               "div",
               { class: "sheet-title" },
-              h("span", { text: ok ? "正解！" : "ざんねん… 正解は " + res.correctAnswer + " 番" }),
+              h("span", {
+                class: "sheet-badge",
+                text: ok ? "○" : "×",
+                "aria-hidden": "true",
+              }),
+              h(
+                "span",
+                { text: ok ? "正解！" : "不正解… 正解は " + res.correctAnswer + " 番" },
+              ),
+              h("span", {
+                class: "sheet-score",
+                text:
+                  "現在 " + ses.score + " / " + (ses.index + 1) + " 正解",
+              }),
               h("span", { class: "kbd", text: "Enter" }),
             ),
           );
@@ -1089,22 +1124,41 @@
         ses.score = done.score;
         var pct = total ? ses.score / total : 0;
         var perfect = ses.score === total;
+        var tone = perfect ? "is-full" : pct >= 0.7 ? "is-good" : pct >= 0.4 ? "is-mid" : "is-bad";
+        var msgTone = perfect || pct >= 0.7 ? "is-good" : pct >= 0.4 ? "is-mid" : "is-bad";
+        var ngCount = total - ses.score;
         clear(hero);
         hero.appendChild(h("span", { class: "eyebrow", text: ses.quiz.title }));
-        hero.appendChild(
-          ring(pct, [String(ses.score), h("small", { text: "/ " + total })], "score-ring", perfect),
+        var ringEl = ring(
+          pct,
+          [h("strong", { text: String(ses.score) }), h("small", { text: "/ " + total })],
+          "score-ring " + tone,
+          tone,
         );
+        hero.appendChild(ringEl);
         hero.appendChild(
           h("div", {
-            class: "result-msg",
+            class: "result-msg " + msgTone,
             text: perfect
-              ? "全問正解！すばらしい！"
+              ? "○ 全問正解！すばらしい！"
               : pct >= 0.7
-                ? "よくできました！"
+                ? "○ よくできました！"
                 : pct >= 0.4
-                  ? "もう少し！復習しよう"
-                  : "ここからが本番。もう一度！",
+                  ? "× もう少し！復習しよう"
+                  : "× ここからが本番。もう一度！",
           }),
+        );
+        hero.appendChild(
+          h(
+            "div",
+            { class: "result-score-chips" },
+            h("span", { class: "score-chip is-ok", text: "○ " + ses.score + "問 正解" }),
+            h("span", { class: "score-chip is-ng", text: "× " + ngCount + "問 不正解" }),
+            h("span", {
+              class: "score-chip is-rate",
+              text: "正答率 " + Math.round(pct * 100) + "%",
+            }),
+          ),
         );
         hero.appendChild(
           h("div", {
@@ -1138,15 +1192,20 @@
         root.appendChild(grid);
         var review = h("div", { class: "review" });
         ses.answers.forEach(function (a, i) {
-          var d = h("details", { class: "review-item" });
+          var d = h("details", { class: "review-item " + (a.ok ? "is-ok" : "is-ng") });
           if (!a.ok) d.open = true;
           var sumStatement = h("span", { class: "review-statement" });
           renderRich(sumStatement, a.q.statement);
+          var judge = h("span", {
+            class: "review-judge " + (a.ok ? "is-ok" : "is-ng"),
+            text: a.ok ? "正解" : "不正解",
+          });
           var sumWrap = h(
             "span",
             { class: "grow" },
             h("span", { text: "第" + (i + 1) + "問　" }),
             sumStatement,
+            judge,
           );
           d.appendChild(
             h(
@@ -1160,13 +1219,16 @@
               sumWrap,
             ),
           );
-          var yourPrefix = h("div", { text: "あなたの回答: " + a.choice + ". " });
+          var yourPrefix = h("div", {
+            class: "review-your " + (a.ok ? "is-ok" : "is-ng"),
+            text: (a.ok ? "○ あなたの回答: " : "× あなたの回答: ") + a.choice + ". ",
+          });
           yourPrefix.appendChild(richEl("span", "review-inline", a.q.choices[a.choice - 1]));
           var bodyChildren = [yourPrefix];
           if (!a.ok) {
             var correctPrefix = h("div", {
-              style: "color:var(--shu);font-weight:700",
-              text: "正解: " + a.correct + ". ",
+              class: "review-correct",
+              text: "○ 正解: " + a.correct + ". ",
             });
             correctPrefix.appendChild(richEl("span", "review-inline", a.q.choices[a.correct - 1]));
             bodyChildren.push(correctPrefix);
@@ -1214,6 +1276,9 @@
             }
             rows.forEach(function (r) {
               var now = r.id === ses.attemptId;
+              var rpct = r.total ? r.score / r.total : 0;
+              var barTone = rpct >= 0.7 ? "" : rpct >= 0.4 ? "is-mid" : "is-low";
+              var scoreTone = rpct >= 0.7 ? "is-good" : rpct >= 0.4 ? "" : "is-bad";
               hist.appendChild(
                 h(
                   "div",
@@ -1225,10 +1290,16 @@
                     h(
                       "div",
                       { class: "history-bar" },
-                      h("i", { style: "width:" + (r.total ? (r.score / r.total) * 100 : 0) + "%" }),
+                      h("i", {
+                        class: barTone,
+                        style: "width:" + rpct * 100 + "%",
+                      }),
                     ),
                   ),
-                  h("strong", { class: "tnum", text: r.score + " / " + r.total }),
+                  h("strong", {
+                    class: "tnum " + scoreTone,
+                    text: (rpct >= 1 ? "○ " : rpct < 0.4 ? "× " : "") + r.score + " / " + r.total,
+                  }),
                 ),
               );
             });

@@ -582,8 +582,14 @@
     stroke: var(--rule-soft);
   }
   .ring .ring-fg {
-    stroke: var(--shu);
+    stroke: var(--moegi);
     transition: stroke-dashoffset 0.8s var(--ease);
+  }
+  .ring .ring-fg.is-mid {
+    stroke: var(--yamabuki);
+  }
+  .ring .ring-fg.is-bad {
+    stroke: var(--shu);
   }
   .ring .ring-fg.is-full {
     stroke: var(--moegi);
@@ -973,9 +979,9 @@
     color: var(--ink-3);
   }
   .quiz-mark.is-perfect {
-    background: var(--shu-soft);
-    color: var(--shu);
-    border: 2px solid var(--shu);
+    background: var(--moegi-soft);
+    color: var(--moegi);
+    border: 2px solid var(--moegi);
   }
   .quiz-mark.is-tried {
     background: var(--ai-soft);
@@ -1094,7 +1100,7 @@
   }
   .choice {
     display: grid;
-    grid-template-columns: 40px 1fr;
+    grid-template-columns: 40px 1fr auto;
     align-items: center;
     gap: 12px;
     padding: 14px 16px;
@@ -1129,23 +1135,46 @@
     color: var(--ink-2);
   }
   .choice.is-correct {
-    border-color: var(--shu);
-    background: var(--shu-soft);
+    border-color: var(--moegi);
+    background: var(--moegi-soft);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--moegi) 25%, transparent);
   }
   .choice.is-correct .choice-key {
-    background: var(--shu);
+    background: var(--moegi);
     color: #fff;
   }
   .choice.is-wrong {
-    border-color: var(--ai);
-    background: var(--ai-soft);
+    border-color: var(--shu);
+    background: var(--shu-soft);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--shu) 22%, transparent);
   }
   .choice.is-wrong .choice-key {
-    background: var(--ai);
+    background: var(--shu);
     color: #fff;
   }
   .choice.is-dim {
     opacity: 0.45;
+  }
+  .choice-mark {
+    margin-left: auto;
+    flex: none;
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    display: grid;
+    place-items: center;
+    font-weight: 800;
+    font-size: 16px;
+    font-family: var(--font-serif);
+  }
+  .choice.is-correct .choice-mark {
+    border: 2.5px solid var(--moegi);
+    color: var(--moegi);
+    background: #fff;
+  }
+  .choice.is-wrong .choice-mark {
+    color: var(--shu);
+    font-size: 20px;
   }
 
   /* hanko-style mark (⭕ / ✕) that stamps onto the statement */
@@ -1166,11 +1195,14 @@
     transform: rotate(-12deg) scale(1.6);
   }
   .stamp.is-ok {
-    border: 5px solid var(--shu);
-    color: var(--shu);
+    border: 5px solid var(--moegi);
+    color: var(--moegi);
+    background: color-mix(in srgb, var(--moegi-soft) 85%, transparent);
   }
   .stamp.is-ng {
-    color: var(--ai);
+    border: 5px solid var(--shu);
+    color: var(--shu);
+    background: color-mix(in srgb, var(--shu-soft) 88%, transparent);
     font-size: 56px;
   }
   .stamp.show {
@@ -1222,10 +1254,20 @@
     overflow: auto;
   }
   .sheet-card.is-ok {
-    border-top: 5px solid var(--shu);
+    border-top: 6px solid var(--moegi);
+    background: linear-gradient(
+      to bottom,
+      color-mix(in srgb, var(--moegi-soft) 55%, var(--paper-2)),
+      var(--paper-2) 38%
+    );
   }
   .sheet-card.is-ng {
-    border-top: 5px solid var(--ai);
+    border-top: 6px solid var(--shu);
+    background: linear-gradient(
+      to bottom,
+      color-mix(in srgb, var(--shu-soft) 60%, var(--paper-2)),
+      var(--paper-2) 38%
+    );
   }
   .sheet-title {
     display: flex;
@@ -1233,6 +1275,52 @@
     gap: 10px;
     font-size: 18px;
     font-weight: 800;
+  }
+  .sheet-card.is-ok .sheet-title {
+    color: var(--moegi);
+  }
+  .sheet-card.is-ng .sheet-title {
+    color: var(--shu);
+  }
+  .sheet-badge {
+    flex: none;
+    width: 34px;
+    height: 34px;
+    border-radius: 50%;
+    display: grid;
+    place-items: center;
+    font-family: var(--font-serif);
+    font-weight: 700;
+    font-size: 19px;
+  }
+  .sheet-card.is-ok .sheet-badge {
+    border: 3px solid var(--moegi);
+    color: var(--moegi);
+    background: #fff;
+  }
+  .sheet-card.is-ng .sheet-badge {
+    border: 3px solid var(--shu);
+    color: var(--shu);
+    background: #fff;
+    font-size: 22px;
+  }
+  .sheet-score {
+    font-size: 12px;
+    font-weight: 800;
+    padding: 3px 10px;
+    border-radius: var(--r-pill);
+    background: var(--paper-3);
+    color: var(--ink-2);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+  .sheet-card.is-ok .sheet-score {
+    background: var(--moegi-soft);
+    color: var(--moegi);
+  }
+  .sheet-card.is-ng .sheet-score {
+    background: var(--shu-soft);
+    color: var(--shu);
   }
   .sheet-title .kbd {
     margin-left: auto;
@@ -1293,9 +1381,97 @@
     font-size: 20px;
     font-weight: 800;
   }
+  .result-msg.is-good {
+    color: var(--moegi);
+  }
+  .result-msg.is-mid {
+    color: color-mix(in srgb, var(--yamabuki) 75%, var(--ink));
+  }
+  .result-msg.is-bad {
+    color: var(--shu);
+  }
   .result-sub {
     color: var(--ink-3);
     font-size: 14px;
+  }
+  .result-score-chips {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+  .score-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 14px;
+    border-radius: var(--r-pill);
+    font-size: 14px;
+    font-weight: 800;
+    font-variant-numeric: tabular-nums;
+    border: 1.5px solid transparent;
+  }
+  .score-chip.is-ok {
+    background: var(--moegi-soft);
+    color: var(--moegi);
+    border-color: color-mix(in srgb, var(--moegi) 35%, transparent);
+  }
+  .score-chip.is-ng {
+    background: var(--shu-soft);
+    color: var(--shu);
+    border-color: color-mix(in srgb, var(--shu) 35%, transparent);
+  }
+  .score-chip.is-rate {
+    background: var(--paper-3);
+    color: var(--ink);
+    border-color: var(--rule);
+  }
+  .score-ring .ring-label strong {
+    font-size: 38px;
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+  }
+  .score-ring.is-good .ring-label strong {
+    color: var(--moegi);
+  }
+  .score-ring.is-mid .ring-label strong {
+    color: color-mix(in srgb, var(--yamabuki) 75%, var(--ink));
+  }
+  .score-ring.is-bad .ring-label strong {
+    color: var(--shu);
+  }
+  .play-score {
+    font-size: 12px;
+    font-weight: 800;
+    padding: 4px 10px;
+    border-radius: var(--r-pill);
+    background: var(--paper-3);
+    color: var(--ink-2);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+  .play-score.is-ok {
+    background: var(--moegi-soft);
+    color: var(--moegi);
+  }
+  .play-score.is-ng {
+    background: var(--shu-soft);
+    color: var(--shu);
+  }
+  .history-row strong.is-good {
+    color: var(--moegi);
+  }
+  .history-row strong.is-bad {
+    color: var(--shu);
+  }
+  .history-bar i.is-low {
+    background: var(--shu);
+  }
+  .history-bar i:not(.is-low) {
+    background: var(--moegi);
+  }
+  .history-bar i.is-mid {
+    background: var(--yamabuki);
   }
   .result-actions {
     display: flex;
@@ -1348,13 +1524,52 @@
     font-family: var(--font-serif);
     font-weight: 700;
   }
+  .review-item.is-ok {
+    border-left: 5px solid var(--moegi);
+  }
+  .review-item.is-ng {
+    border-left: 5px solid var(--shu);
+  }
   .review-mark.is-ok {
-    border: 2.5px solid var(--shu);
-    color: var(--shu);
+    border: 2.5px solid var(--moegi);
+    color: var(--moegi);
+    background: var(--moegi-soft);
   }
   .review-mark.is-ng {
-    color: var(--ai);
+    border: 2.5px solid var(--shu);
+    color: var(--shu);
+    background: var(--shu-soft);
     font-size: 20px;
+  }
+  .review-judge {
+    display: inline-block;
+    font-size: 11px;
+    font-weight: 800;
+    padding: 2px 8px;
+    border-radius: var(--r-pill);
+    margin-left: 8px;
+    vertical-align: middle;
+  }
+  .review-judge.is-ok {
+    background: var(--moegi-soft);
+    color: var(--moegi);
+  }
+  .review-judge.is-ng {
+    background: var(--shu-soft);
+    color: var(--shu);
+  }
+  .review-your {
+    font-weight: 600;
+  }
+  .review-your.is-ok {
+    color: var(--moegi);
+  }
+  .review-your.is-ng {
+    color: var(--shu);
+  }
+  .review-correct {
+    color: var(--moegi);
+    font-weight: 700;
   }
   .review-body {
     padding: 0 14px 14px 52px;
@@ -1400,7 +1615,7 @@
   .history-bar i {
     display: block;
     height: 100%;
-    background: var(--shu);
+    background: var(--moegi);
   }
 
   /* ============ ADMIN ============ */
