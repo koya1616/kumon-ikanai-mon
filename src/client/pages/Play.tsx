@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router";
 import { api } from "../api";
 import type { AttemptState, PlayQuestion, QuizMeta } from "../api";
@@ -53,6 +53,9 @@ export const Play = () => {
   const toast = useToast();
   const navigate = useNavigate();
   const [phase, setPhase] = useState<Phase>({ name: "loading", message: "出題を準備しています…" });
+  // 開始判定は quizId ごとに1回だけ行う。restore/startNew 内の loadTree() による
+  // 親 state 更新で startNew の同一性が変わっても playing/resume を上書きしない。
+  const initializedRef = useRef<number | null>(null);
 
   const startNew = useCallback(async () => {
     setPhase({ name: "loading", message: "出題を準備しています…" });
@@ -133,6 +136,8 @@ export const Play = () => {
   // 開始判定: 未完了の自分の挑戦が残っていれば「つづき/はじめ」を選ばせる。
   // 順序不明・不整合の場合は安全側で新規開始する。
   useEffect(() => {
+    if (initializedRef.current === quizId) return;
+    initializedRef.current = quizId;
     let alive = true;
     const saved = readResume(quizId);
     if (!saved) {
