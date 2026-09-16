@@ -3,7 +3,16 @@ import { useNavigate, useParams } from "react-router";
 import { api } from "../api";
 import type { AttemptState, PlayQuestion, QuizMeta } from "../api";
 import { useDialog } from "../dialog";
-import { clearResume, readResume, shuffle, writeResume } from "../resume";
+import {
+  applyChoiceOrder,
+  clearResume,
+  readResume,
+  shuffle,
+  toDisplayedPos,
+  toOriginalPos,
+  withShuffledChoices,
+  writeResume,
+} from "../resume";
 import { RichText } from "../rich";
 import { getSession, setSession } from "../session";
 import type { PlaySession } from "../session";
@@ -55,11 +64,18 @@ export const Play = () => {
         }),
         loadTree(),
       ]);
-      const shuffled = shuffle(started.questions ?? []);
+      const shuffled = shuffle(started.questions ?? []).map(withShuffledChoices);
+      const choiceOrders: Record<number, number[]> = {};
+      for (const q of shuffled) {
+        if (q.attemptQuestionId != null && q.choiceMap) {
+          choiceOrders[q.attemptQuestionId] = q.choiceMap;
+        }
+      }
       writeResume(
         quizId,
         started.attemptId,
         shuffled.map((q) => q.attemptQuestionId as number),
+        choiceOrders,
       );
       setPhase({
         name: "playing",
@@ -88,9 +104,9 @@ export const Play = () => {
           const a = choice.ansById[q.attemptQuestionId as number]!;
           answers.push({
             q,
-            choice: a.choice,
+            choice: toDisplayedPos(q, a.choice),
             ok: a.correct,
-            correct: a.correctAnswer,
+            correct: toDisplayedPos(q, a.correctAnswer),
             exp: a.explanation ?? "",
           });
         }
@@ -144,7 +160,11 @@ export const Play = () => {
         }
         const byId: Record<number, PlayQuestion> = {};
         for (const q of st.questions) byId[q.attemptQuestionId as number] = q;
-        const ordered = saved.order.map((oid) => byId[oid]);
+        const ordered = saved.order.map((oid) => {
+          const orig = byId[oid];
+          if (!orig) return undefined;
+          return applyChoiceOrder(orig, saved.choiceOrders?.[oid]);
+        });
         if (ordered.some((q) => !q)) {
           clearResume(quizId);
           void startNew();
@@ -278,13 +298,15 @@ const PlayingScreen = ({ play, onChange }: { play: LivePlay; onChange: (p: LiveP
   }, [play, onChange, navigate]);
 
   const answer = useCallback(
-    (choice: number) => {
+    (displayed: number) => {
       if (play.answers.length > play.index || play.busy) return;
       const sending = { ...play, busy: true };
       onChange(sending);
+      // 表示順→元の番号に読み替えて送信する (サーバは元のpositionで採点する)
+      const original = toOriginalPos(q, displayed);
       api<{ correct: boolean; correctAnswer: number; explanation: string }>(
         `/api/attempts/${play.attemptId}/answers`,
-        { method: "POST", body: { attemptQuestionId: q.attemptQuestionId, choice } },
+        { method: "POST", body: { attemptQuestionId: q.attemptQuestionId, choice: original } },
       )
         .then((res) => {
           onChange({
@@ -294,9 +316,9 @@ const PlayingScreen = ({ play, onChange }: { play: LivePlay; onChange: (p: LiveP
               ...sending.answers,
               {
                 q,
-                choice,
+                choice: displayed,
                 ok: !!res.correct,
-                correct: res.correctAnswer,
+                correct: toDisplayedPos(q, res.correctAnswer),
                 exp: res.explanation ?? "",
               },
             ],

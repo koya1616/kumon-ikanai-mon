@@ -14,9 +14,50 @@ export const shuffle = <T>(arr: T[]): T[] => {
   return a;
 };
 
+/** 表示位置(1始まり)→元の番号。choiceMap未設定は恒等写像 */
+export const toOriginalPos = (q: PlayQuestion, displayed: number): number => {
+  const m = q.choiceMap;
+  if (!m || m.length !== q.choices.length) return displayed;
+  return m[displayed - 1] ?? displayed;
+};
+
+/** 元の番号(1始まり)→表示位置。choiceMap未設定は恒等写像 */
+export const toDisplayedPos = (q: PlayQuestion, original: number): number => {
+  const m = q.choiceMap;
+  if (!m || m.length !== q.choices.length) return original;
+  const idx = m.indexOf(original);
+  return idx < 0 ? original : idx + 1;
+};
+
+/** 1問分の選択肢を表示用にシャッフルし、choiceMapを付与する */
+export const withShuffledChoices = (q: PlayQuestion): PlayQuestion => {
+  if (q.choices.length <= 1) return { ...q, choiceMap: q.choices.map((_, i) => i + 1) };
+  const map = shuffle(q.choices.map((_, i) => i + 1));
+  return {
+    ...q,
+    choices: map.map((orig) => q.choices[orig - 1] as string),
+    choiceMap: map,
+  };
+};
+
+/** 保存済みマップをサーバ順の問題に適用する。不正なマップは無視して恒等写像にする */
+export const applyChoiceOrder = (q: PlayQuestion, map: number[] | undefined): PlayQuestion => {
+  if (!map || map.length !== q.choices.length) return q;
+  const n = q.choices.length;
+  const seen = new Set(map);
+  if (seen.size !== n || map.some((v) => !Number.isInteger(v) || v < 1 || v > n)) return q;
+  return {
+    ...q,
+    choices: map.map((orig) => q.choices[orig - 1] as string),
+    choiceMap: [...map],
+  };
+};
+
 export interface ResumeData {
   attemptId: number;
   order: number[];
+  /** attemptQuestionId -> 表示順マップ (表示位置iの元番号)。旧データには無く、その場合は恒等写像扱い */
+  choiceOrders?: Record<number, number[]> | undefined;
 }
 
 const key = (quizId: number) => `kmon:resume:${quizId}`;
@@ -29,15 +70,22 @@ export const readResume = (quizId: number): ResumeData | null => {
     if (!v || typeof v.attemptId !== "number" || !Array.isArray(v.order) || !v.order.length) {
       return null;
     }
-    return { attemptId: v.attemptId, order: v.order };
+    const choiceOrders =
+      v.choiceOrders && typeof v.choiceOrders === "object" ? v.choiceOrders : undefined;
+    return { attemptId: v.attemptId, order: v.order, choiceOrders };
   } catch {
     return null;
   }
 };
 
-export const writeResume = (quizId: number, attemptId: number, order: number[]): void => {
+export const writeResume = (
+  quizId: number,
+  attemptId: number,
+  order: number[],
+  choiceOrders?: Record<number, number[]>,
+): void => {
   try {
-    localStorage.setItem(key(quizId), JSON.stringify({ attemptId, order }));
+    localStorage.setItem(key(quizId), JSON.stringify({ attemptId, order, choiceOrders }));
   } catch {
     /* private mode などでは保存できなくても続行する */
   }

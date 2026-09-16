@@ -50,6 +50,8 @@ export interface PlayQuestion {
   position?: number;
   statement: string;
   choices: string[];
+  /** 表示順→元の番号のマップ。choicesは表示順に並べ替え済み。未設定=シャッフルなし(恒等写像) */
+  choiceMap?: number[];
 }
 
 export interface QuizMeta {
