@@ -159,7 +159,7 @@ export const Home = () => {
                 </div>
                 <div className="resume-grid">
                   {resumable.map((p) => (
-                    <Link key={p.quizId} className="resume-card" to={`/play/${p.quizId}`}>
+                    <Link key={p.quizId} className="resume-item" to={`/play/${p.quizId}`}>
                       <div className="grow">
                         <div style={{ fontWeight: 700 }}>{p.quiz.title}</div>
                         <div className="muted">{`${p.category.title} › ${p.topic.title}`}</div>

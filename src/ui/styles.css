@@ -923,24 +923,26 @@
       grid-template-columns: repeat(3, minmax(0, 1fr));
     }
   }
-  .resume-card {
+  .resume-item {
     display: flex;
     align-items: center;
     gap: 12px;
-    padding: 14px 16px;
-    border-radius: var(--r-lg);
+    padding: 12px 14px;
+    border-radius: var(--r-md);
     background: var(--paper-2);
     border: 1px solid var(--rule-soft);
     border-left: 5px solid var(--shu);
-    box-shadow: var(--shadow-1);
     text-decoration: none;
     color: inherit;
   }
-  .resume-card:hover {
+  .resume-item:hover {
     border-color: var(--rule);
-    box-shadow: var(--shadow-2);
   }
-  .resume-card .resume-bar {
+  .resume-item .chip {
+    flex: none;
+    white-space: nowrap;
+  }
+  .resume-item .resume-bar {
     max-width: none;
   }
   .cat-card {
