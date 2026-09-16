@@ -10,7 +10,6 @@ import {
   shuffle,
   toDisplayedPos,
   toOriginalPos,
-  withShuffledChoices,
   writeResume,
 } from "../resume";
 import { RichText } from "../rich";
@@ -67,18 +66,11 @@ export const Play = () => {
         }),
         loadTree(),
       ]);
-      const shuffled = shuffle(started.questions ?? []).map(withShuffledChoices);
-      const choiceOrders: Record<number, number[]> = {};
-      for (const q of shuffled) {
-        if (q.attemptQuestionId != null && q.choiceMap) {
-          choiceOrders[q.attemptQuestionId] = q.choiceMap;
-        }
-      }
+      const shuffled = shuffle(started.questions ?? []);
       writeResume(
         quizId,
         started.attemptId,
         shuffled.map((q) => q.attemptQuestionId as number),
-        choiceOrders,
       );
       setPhase({
         name: "playing",

@@ -29,15 +29,9 @@ export const toDisplayedPos = (q: PlayQuestion, original: number): number => {
   return idx < 0 ? original : idx + 1;
 };
 
-/** 1問分の選択肢を表示用にシャッフルし、choiceMapを付与する */
+/** 選択肢はシャッフルしない (DB登録順のまま表示)。choiceMapは恒等写像で付与する */
 export const withShuffledChoices = (q: PlayQuestion): PlayQuestion => {
-  if (q.choices.length <= 1) return { ...q, choiceMap: q.choices.map((_, i) => i + 1) };
-  const map = shuffle(q.choices.map((_, i) => i + 1));
-  return {
-    ...q,
-    choices: map.map((orig) => q.choices[orig - 1] as string),
-    choiceMap: map,
-  };
+  return { ...q, choiceMap: q.choices.map((_, i) => i + 1) };
 };
 
 /** 保存済みマップをサーバ順の問題に適用する。不正なマップは無視して恒等写像にする */
