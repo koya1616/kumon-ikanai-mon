@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router";
 import { api, QUESTIONS_PER_QUIZ } from "../api";
 import type { Category, Quiz, QuizStatus, Topic } from "../api";
@@ -490,13 +490,11 @@ const QuizSettingsFields = ({ quiz, setValue }: { quiz: Quiz; setValue: (v: unkn
   const [title, setTitle] = useState(quiz.title);
   const [difficulty, setDifficulty] = useState(quiz.difficulty);
   const [status, setStatus] = useState<QuizStatus>(quiz.status);
-  const stateRef = useRef({ title, difficulty, status });
-  stateRef.current = { title, difficulty, status };
   useEffect(() => {
     setValue(() => ({
-      title: stateRef.current.title.trim(),
-      difficulty: stateRef.current.difficulty,
-      status: stateRef.current.status,
+      title: title.trim(),
+      difficulty,
+      status,
     }));
   }, [setValue, title, difficulty, status]);
   return (
