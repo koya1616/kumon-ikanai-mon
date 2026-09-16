@@ -70,13 +70,17 @@ export const Home = () => {
 
   if (!tree) {
     return (
-      <div className="screen">
-        <header className="hero">
-          <span className="eyebrow">今日のドリル</span>
-          <h1 className="title-xl">どれから解く？</h1>
-          <p className="muted">カテゴリを選んで、10問ずつ解いていこう。</p>
-        </header>
-        <Skeletons n={3} />
+      <div className="screen home-screen">
+        <div className="home-band">
+          <div className="home-band-inner">
+            <span className="eyebrow">今日のドリル</span>
+            <h1 className="title-xl">どれから解く？</h1>
+            <p className="muted">カテゴリを選んで、10問ずつ解いていこう。</p>
+          </div>
+        </div>
+        <div className="home-body">
+          <Skeletons n={3} />
+        </div>
       </div>
     );
   }
@@ -102,131 +106,134 @@ export const Home = () => {
   });
 
   return (
-    <div className="screen">
-      <header className="hero">
-        <span className="eyebrow">今日のドリル</span>
-        <h1 className="title-xl">どれから解く？</h1>
-        <p className="muted">カテゴリを選んで、10問ずつ解いていこう。</p>
-      </header>
-
-      <div className="stat-row">
-        <div className="stat">
-          <div className="stat-v tnum">{totals.total}</div>
-          <div className="stat-k">挑戦できるクイズ</div>
-        </div>
-        <div className="stat">
-          <div className="stat-v tnum">{totals.tried}</div>
-          <div className="stat-k">挑戦ずみ</div>
-        </div>
-        <div className="stat">
-          <div className="stat-v tnum" style={{ color: "var(--moegi)" }}>
-            {totals.perfect}
+    <div className="screen home-screen">
+      <div className="home-band">
+        <div className="home-band-inner">
+          <div className="home-band-text">
+            <span className="eyebrow">今日のドリル</span>
+            <h1 className="title-xl">どれから解く？</h1>
+            <p className="muted">カテゴリを選んで、10問ずつ解いていこう。</p>
           </div>
-          <div className="stat-k">満点</div>
+          <div className="home-stats">
+            <div className="stat">
+              <div className="stat-v tnum">{totals.total}</div>
+              <div className="stat-k">挑戦できるクイズ</div>
+            </div>
+            <div className="stat">
+              <div className="stat-v tnum">{totals.tried}</div>
+              <div className="stat-k">挑戦ずみ</div>
+            </div>
+            <div className="stat">
+              <div className="stat-v tnum" style={{ color: "var(--moegi)" }}>
+                {totals.perfect}
+              </div>
+              <div className="stat-k">満点</div>
+            </div>
+          </div>
         </div>
       </div>
 
-      {!tree.length ? (
-        <>
-          <div className="card">
-            <EmptyState
-              glyph="空"
-              title="まだカテゴリがありません"
-              sub="管理画面からカテゴリ・トピック・クイズを作成してください。"
-            />
-          </div>
-          <div className="row mt" style={{ justifyContent: "center" }}>
-            <Link className="btn btn-primary" to="/admin">
-              管理画面へ
-            </Link>
-          </div>
-        </>
-      ) : (
-        <>
-          {resumable.length > 0 && (
-            <>
-              <div className="section-head">
-                <h2 className="title-md">回答途中</h2>
-                <span className="chip chip-shu">{resumable.length} 件</span>
-              </div>
-              <div className="recent-list">
-                {resumable.map((p) => (
-                  <Link key={p.quizId} className="recent-item" to={`/play/${p.quizId}`}>
-                    <div className="grow">
-                      <div style={{ fontWeight: 700 }}>{p.quiz.title}</div>
-                      <div className="muted">{`${p.category.title} › ${p.topic.title}`}</div>
-                      <div
-                        className="resume-bar"
-                        aria-hidden="true"
-                        style={{ marginTop: 8, maxWidth: 280 }}
-                      >
-                        <i style={{ width: `${p.total ? (p.done / p.total) * 100 : 0}%` }} />
+      <div className="home-body">
+        {!tree.length ? (
+          <>
+            <div className="card card-pad">
+              <EmptyState
+                glyph="空"
+                title="まだカテゴリがありません"
+                sub="管理画面からカテゴリ・トピック・クイズを作成してください。"
+              />
+            </div>
+            <div className="row mt" style={{ justifyContent: "center" }}>
+              <Link className="btn btn-primary" to="/admin">
+                管理画面へ
+              </Link>
+            </div>
+          </>
+        ) : (
+          <>
+            {resumable.length > 0 && (
+              <section aria-label="回答途中">
+                <div className="section-head">
+                  <h2 className="title-md">つづきから</h2>
+                  <span className="chip chip-shu">{resumable.length} 件</span>
+                </div>
+                <div className="resume-grid">
+                  {resumable.map((p) => (
+                    <Link key={p.quizId} className="resume-card" to={`/play/${p.quizId}`}>
+                      <div className="grow">
+                        <div style={{ fontWeight: 700 }}>{p.quiz.title}</div>
+                        <div className="muted">{`${p.category.title} › ${p.topic.title}`}</div>
+                        <div className="resume-bar" aria-hidden="true" style={{ marginTop: 8 }}>
+                          <i style={{ width: `${p.total ? (p.done / p.total) * 100 : 0}%` }} />
+                        </div>
+                        <div className="muted tnum" style={{ marginTop: 4 }}>
+                          {p.done} / {p.total} 問まで回答ずみ
+                        </div>
                       </div>
-                      <div className="muted tnum" style={{ marginTop: 4 }}>
-                        {p.done} / {p.total} 問まで回答ずみ
-                      </div>
-                    </div>
-                    <div>
                       <span className="chip chip-moegi">▶ つづきから</span>
-                    </div>
-                    <Icon name="arrow" />
-                  </Link>
-                ))}
-              </div>
-            </>
-          )}
-          <div className="section-head">
-            <h2 className="title-md">カテゴリ</h2>
-          </div>
-          <div className="cat-grid">
-            {tree.map((c) => {
-              const s = statsOf(c);
-              return (
-                <Link key={c.id} className="cat-card" to={`/c/${c.id}`}>
-                  <Ring
-                    pct={s.mastery / 100}
-                    label={`${s.mastery}%`}
-                    tone={s.total > 0 && s.perfect === s.total}
-                  />
-                  <div className="cat-card-body">
-                    <div className="cat-card-title">{c.title}</div>
-                    <div className="cat-card-meta">
-                      {c.topics.length}トピック · {s.total}クイズ · 満点{s.perfect}
-                    </div>
-                  </div>
-                  <Icon name="arrow" />
-                </Link>
-              );
-            })}
-          </div>
-        </>
-      )}
+                      <Icon name="arrow" />
+                    </Link>
+                  ))}
+                </div>
+              </section>
+            )}
+            <div className="home-layout">
+              <section aria-label="カテゴリ">
+                <div className="section-head">
+                  <h2 className="title-md">カテゴリ</h2>
+                </div>
+                <div className="cat-grid">
+                  {tree.map((c) => {
+                    const s = statsOf(c);
+                    return (
+                      <Link key={c.id} className="cat-card" to={`/c/${c.id}`}>
+                        <Ring
+                          pct={s.mastery / 100}
+                          label={`${s.mastery}%`}
+                          tone={s.total > 0 && s.perfect === s.total}
+                        />
+                        <div className="cat-card-body">
+                          <div className="cat-card-title">{c.title}</div>
+                          <div className="cat-card-meta">
+                            {c.topics.length}トピック · {s.total}クイズ · 満点{s.perfect}
+                          </div>
+                        </div>
+                        <Icon name="arrow" />
+                      </Link>
+                    );
+                  })}
+                </div>
+              </section>
 
-      {recent.length > 0 && (
-        <>
-          <div className="section-head mt">
-            <h2 className="title-md">最近の挑戦</h2>
-          </div>
-          <div className="recent-list">
-            {recent.map((s) => {
-              const f = findQuiz(s.quizId);
-              if (!f) return null;
-              return (
-                <Link key={s.quizId} className="recent-item" to={`/play/${s.quizId}`}>
-                  <div className="grow">
-                    <div style={{ fontWeight: 700 }}>{f.quiz.title}</div>
-                    <div className="muted">{`${f.category.title} › ${f.topic.title} · ${fmtDate(s.lastCompletedAt)}`}</div>
+              {recent.length > 0 && (
+                <aside aria-label="最近の挑戦">
+                  <div className="section-head">
+                    <h2 className="title-md">最近の挑戦</h2>
                   </div>
-                  <div className="recent-score">
-                    最高 {s.bestScore}/{s.bestTotal}
+                  <div className="recent-list">
+                    {recent.map((s) => {
+                      const f = findQuiz(s.quizId);
+                      if (!f) return null;
+                      return (
+                        <Link key={s.quizId} className="recent-item" to={`/play/${s.quizId}`}>
+                          <div className="grow">
+                            <div style={{ fontWeight: 700 }}>{f.quiz.title}</div>
+                            <div className="muted">{`${f.category.title} › ${f.topic.title} · ${fmtDate(s.lastCompletedAt)}`}</div>
+                          </div>
+                          <div className="recent-score">
+                            最高 {s.bestScore}/{s.bestTotal}
+                          </div>
+                          <Icon name="arrow" />
+                        </Link>
+                      );
+                    })}
                   </div>
-                  <Icon name="arrow" />
-                </Link>
-              );
-            })}
-          </div>
-        </>
-      )}
+                </aside>
+              )}
+            </div>
+          </>
+        )}
+      </div>
     </div>
   );
 };

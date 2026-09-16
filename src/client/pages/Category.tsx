@@ -28,16 +28,22 @@ export const Category = () => {
 
   if (!ready) {
     return (
-      <div className="screen">
-        <Skeletons n={3} />
+      <div className="screen cat-screen">
+        <div className="cat-band">
+          <div className="cat-band-inner">
+            <Skeletons n={3} />
+          </div>
+        </div>
       </div>
     );
   }
   if (!category) {
     return (
-      <div className="screen">
-        <div className="card">
-          <EmptyState glyph="？" title="カテゴリが見つかりません" />
+      <div className="screen cat-screen">
+        <div className="cat-body">
+          <div className="card card-pad">
+            <EmptyState glyph="？" title="カテゴリが見つかりません" />
+          </div>
         </div>
       </div>
     );
@@ -56,54 +62,68 @@ export const Category = () => {
     })
     .filter((b) => b.quizzes.length > 0);
   shown = blocks.reduce((n, b) => n + b.quizzes.length, 0);
+  const filtering = keyword !== "" || diff !== 0;
 
   return (
-    <div className="screen">
-      <Crumbs items={[{ label: "ホーム", href: "/" }, { label: category.title }]} />
-      <header className="row mt" style={{ gap: 16 }}>
-        <Ring
-          pct={s.mastery / 100}
-          label={`${s.mastery}%`}
-          tone={s.total > 0 && s.perfect === s.total}
-        />
-        <div className="grow">
-          <h1 className="title-lg">{category.title}</h1>
-          <p className="muted">
-            {s.tried}/{s.total} クイズに挑戦ずみ · 満点 {s.perfect}
-          </p>
-        </div>
-      </header>
-
-      <div className="toolbar">
-        <div className="search">
-          <Icon name="search" />
-          <input
-            type="search"
-            placeholder="クイズ名で検索"
-            aria-label="クイズを検索"
-            value={kw}
-            onChange={(e) => setKw(e.target.value)}
-          />
-        </div>
-        <div className="diff-filter" role="group" aria-label="難易度で絞り込み">
-          {[0, 1, 2, 3, 4, 5].map((d) => (
-            <button
-              key={d}
-              type="button"
-              className="chip chip-btn"
-              aria-pressed={diff === d ? "true" : "false"}
-              data-d={d}
-              onClick={() => setDiff(d)}
-            >
-              {d === 0 ? "すべて" : `★${d}`}
-            </button>
-          ))}
+    <div className="screen cat-screen">
+      <div className="cat-band">
+        <div className="cat-band-inner">
+          <Crumbs items={[{ label: "ホーム", href: "/" }, { label: category.title }]} />
+          <div className="cat-band-grid">
+            <Ring
+              pct={s.mastery / 100}
+              label={`${s.mastery}%`}
+              tone={s.total > 0 && s.perfect === s.total}
+            />
+            <div className="cat-band-meta">
+              <h1 className="title-lg">{category.title}</h1>
+              <p className="muted">
+                {s.tried}/{s.total} クイズに挑戦ずみ · 満点 {s.perfect}
+                {filtering && ` · ${shown}件表示中`}
+              </p>
+            </div>
+          </div>
+          <div className="toolbar">
+            <div className="search">
+              <Icon name="search" />
+              <input
+                type="search"
+                placeholder="クイズ名で検索"
+                aria-label="クイズを検索"
+                value={kw}
+                onChange={(e) => setKw(e.target.value)}
+              />
+            </div>
+            <div className="diff-filter" role="group" aria-label="難易度で絞り込み">
+              {[0, 1, 2, 3, 4, 5].map((d) => (
+                <button
+                  key={d}
+                  type="button"
+                  className="chip chip-btn"
+                  aria-pressed={diff === d ? "true" : "false"}
+                  data-d={d}
+                  onClick={() => setDiff(d)}
+                >
+                  {d === 0 ? "すべて" : `★${d}`}
+                </button>
+              ))}
+            </div>
+          </div>
+          {blocks.length > 1 && (
+            <nav className="cat-topic-nav" aria-label="トピック">
+              {blocks.map(({ topic, quizzes }) => (
+                <a key={topic.id} className="chip chip-btn" href={`#topic-${topic.id}`}>
+                  {topic.title} · {quizzes.length}
+                </a>
+              ))}
+            </nav>
+          )}
         </div>
       </div>
 
-      <div>
+      <div className="cat-body">
         {blocks.map(({ topic, quizzes }) => (
-          <section key={topic.id} className="topic-block">
+          <section key={topic.id} id={`topic-${topic.id}`} className="topic-block">
             <div className="topic-head">
               <h3>{topic.title}</h3>
               <span className="count">{quizzes.length} クイズ</span>
@@ -116,7 +136,7 @@ export const Category = () => {
           </section>
         ))}
         {!shown && (
-          <div className="card">
+          <div className="card card-pad">
             <EmptyState
               glyph="無"
               title="該当するクイズがありません"
@@ -126,6 +146,20 @@ export const Category = () => {
                   : "管理画面でこのカテゴリにクイズを追加してください。"
               }
             />
+            {filtering && (
+              <div className="row mt" style={{ justifyContent: "center" }}>
+                <button
+                  type="button"
+                  className="btn"
+                  onClick={() => {
+                    setKw("");
+                    setDiff(0);
+                  }}
+                >
+                  絞り込みをクリア
+                </button>
+              </div>
+            )}
           </div>
         )}
       </div>

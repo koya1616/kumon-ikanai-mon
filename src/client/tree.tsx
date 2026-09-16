@@ -62,33 +62,30 @@ export const TreeProvider = ({ children }: { children: ReactNode }) => {
   const treeRef = useRef<CategoryTreeNode[] | null>(null);
   const inFlightRef = useRef<Promise<CategoryTreeNode[]> | null>(null);
 
-  const loadTree = useCallback(
-    async (force = false): Promise<CategoryTreeNode[]> => {
-      if (!force) {
-        if (treeRef.current) return treeRef.current;
-        if (inFlightRef.current) return inFlightRef.current;
-      }
-      const p: Promise<CategoryTreeNode[]> = (async () => {
-        const [t, s] = await Promise.all([
-          api<CategoryTreeNode[]>("/api/tree").catch((): CategoryTreeNode[] => []),
-          api<AttemptSummary[]>("/api/attempts/summary").catch((): AttemptSummary[] => []),
-        ]);
-        treeRef.current = t;
-        setTree(t);
-        const map: Record<number, AttemptSummary> = {};
-        for (const item of s) map[item.quizId] = item;
-        setSummary(map);
-        return t;
-      })();
-      if (!force) inFlightRef.current = p;
-      try {
-        return await p;
-      } finally {
-        if (inFlightRef.current === p) inFlightRef.current = null;
-      }
-    },
-    [],
-  );
+  const loadTree = useCallback(async (force = false): Promise<CategoryTreeNode[]> => {
+    if (!force) {
+      if (treeRef.current) return treeRef.current;
+      if (inFlightRef.current) return inFlightRef.current;
+    }
+    const p: Promise<CategoryTreeNode[]> = (async () => {
+      const [t, s] = await Promise.all([
+        api<CategoryTreeNode[]>("/api/tree").catch((): CategoryTreeNode[] => []),
+        api<AttemptSummary[]>("/api/attempts/summary").catch((): AttemptSummary[] => []),
+      ]);
+      treeRef.current = t;
+      setTree(t);
+      const map: Record<number, AttemptSummary> = {};
+      for (const item of s) map[item.quizId] = item;
+      setSummary(map);
+      return t;
+    })();
+    if (!force) inFlightRef.current = p;
+    try {
+      return await p;
+    } finally {
+      if (inFlightRef.current === p) inFlightRef.current = null;
+    }
+  }, []);
 
   const invalidate = useCallback(() => {
     treeRef.current = null;
