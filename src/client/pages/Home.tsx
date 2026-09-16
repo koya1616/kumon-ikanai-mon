@@ -2,11 +2,21 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router";
 import { categoryStats, useTree } from "../tree";
 import { EmptyState, Icon, Ring, Skeletons, fmtDate } from "../ui";
-import type { CategoryTreeNode } from "../api";
+import type { AttemptState, CategoryTreeNode } from "../api";
+import { api } from "../api";
+import { clearResume, listResumes } from "../resume";
+
+interface InProgress {
+  quizId: number;
+  attemptId: number;
+  done: number;
+  total: number;
+}
 
 export const Home = () => {
   const { loadTree, summary, findQuiz } = useTree();
   const [tree, setTree] = useState<CategoryTreeNode[] | null>(null);
+  const [inProgress, setInProgress] = useState<InProgress[] | null>(null);
 
   useEffect(() => {
     let alive = true;
@@ -17,6 +27,46 @@ export const Home = () => {
       alive = false;
     };
   }, [loadTree]);
+
+  // 回答途中のクイズ: このブラウザの localStorage (kmon:resume:*) を列挙し、
+  // サーバ状態で未完了かつ 1問以上回答ずみ・全問未満のものだけ残す。
+  // Play の再開判定 (answers 0件は新規扱い) と合わせる。
+  useEffect(() => {
+    if (!tree) return;
+    let alive = true;
+    const saved = listResumes();
+    if (!saved.length) {
+      setInProgress([]);
+      return;
+    }
+    void Promise.all(
+      saved.map(async (r): Promise<InProgress | null> => {
+        try {
+          const st = await api<AttemptState>(`/api/attempts/${r.attemptId}`);
+          if (
+            !st ||
+            st.completedAt ||
+            st.quizId !== r.quizId ||
+            !st.questions?.length ||
+            st.questions.length !== r.order.length
+          ) {
+            if (st?.completedAt) clearResume(r.quizId);
+            return null;
+          }
+          const done = st.answers?.length ?? 0;
+          if (done < 1 || done >= st.questions.length) return null;
+          return { quizId: r.quizId, attemptId: r.attemptId, done, total: st.questions.length };
+        } catch {
+          return null;
+        }
+      }),
+    ).then((rows) => {
+      if (alive) setInProgress(rows.filter((r): r is InProgress => r !== null));
+    });
+    return () => {
+      alive = false;
+    };
+  }, [tree]);
 
   if (!tree) {
     return (
@@ -45,6 +95,11 @@ export const Home = () => {
     .filter((s) => s.lastCompletedAt)
     .sort((a, b) => String(b.lastCompletedAt).localeCompare(String(a.lastCompletedAt)))
     .slice(0, 5);
+
+  const resumable = (inProgress ?? []).flatMap((p) => {
+    const f = findQuiz(p.quizId);
+    return f ? [{ ...p, ...f }] : [];
+  });
 
   return (
     <div className="screen">
@@ -88,6 +143,38 @@ export const Home = () => {
         </>
       ) : (
         <>
+          {resumable.length > 0 && (
+            <>
+              <div className="section-head">
+                <h2 className="title-md">回答途中</h2>
+                <span className="chip chip-shu">{resumable.length} 件</span>
+              </div>
+              <div className="recent-list">
+                {resumable.map((p) => (
+                  <Link key={p.quizId} className="recent-item" to={`/play/${p.quizId}`}>
+                    <div className="grow">
+                      <div style={{ fontWeight: 700 }}>{p.quiz.title}</div>
+                      <div className="muted">{`${p.category.title} › ${p.topic.title}`}</div>
+                      <div
+                        className="resume-bar"
+                        aria-hidden="true"
+                        style={{ marginTop: 8, maxWidth: 280 }}
+                      >
+                        <i style={{ width: `${p.total ? (p.done / p.total) * 100 : 0}%` }} />
+                      </div>
+                      <div className="muted tnum" style={{ marginTop: 4 }}>
+                        {p.done} / {p.total} 問まで回答ずみ
+                      </div>
+                    </div>
+                    <div>
+                      <span className="chip chip-moegi">▶ つづきから</span>
+                    </div>
+                    <Icon name="arrow" />
+                  </Link>
+                ))}
+              </div>
+            </>
+          )}
           <div className="section-head">
             <h2 className="title-md">カテゴリ</h2>
           </div>

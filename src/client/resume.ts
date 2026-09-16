@@ -99,4 +99,24 @@ export const clearResume = (quizId: number): void => {
   }
 };
 
+const PREFIX = "kmon:resume:";
+
+/** このブラウザに保存されている中断データをすべて列挙する */
+export const listResumes = (): { quizId: number; attemptId: number; order: number[] }[] => {
+  const out: { quizId: number; attemptId: number; order: number[] }[] = [];
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (!k?.startsWith(PREFIX)) continue;
+      const quizId = Number(k.slice(PREFIX.length));
+      if (!Number.isInteger(quizId) || quizId <= 0) continue;
+      const saved = readResume(quizId);
+      if (saved) out.push({ quizId, attemptId: saved.attemptId, order: saved.order });
+    }
+  } catch {
+    /* private mode などでは空扱いにする */
+  }
+  return out;
+};
+
 export type { PlayQuestion };
