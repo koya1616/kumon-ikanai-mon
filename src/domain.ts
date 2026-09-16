@@ -233,6 +233,34 @@ export interface Attempt {
   total: number;
   completedAt: string | null;
   createdAt: string;
+  /** 所要秒 (completedAt - createdAt。未完了は null) */
+  durationSec: number | null;
+}
+
+/** 履歴詳細ページ用の1問分の掘り下げ (出題時点のスナップショット) */
+export interface AttemptDetailItem {
+  position: number;
+  attemptQuestionId: number;
+  questionVersionId: number;
+  statement: string;
+  choices: string[];
+  picked: number | null;
+  pickedText: string | null;
+  correctAnswer: number;
+  correct: boolean | null;
+  explanation: string;
+}
+
+/** GET /api/attempts/:id?detail=full の返却形 */
+export interface AttemptDetail {
+  attemptId: number;
+  quizId: number;
+  score: number;
+  total: number;
+  completedAt: string | null;
+  createdAt: string;
+  durationSec: number | null;
+  items: AttemptDetailItem[];
 }
 
 /** quizごとの挑戦サマリー (ツリーのベスト表示用) */

@@ -360,9 +360,14 @@ async function route(req: Request, env: Env): Promise<Response> {
 
   {
     const m = /^\/api\/quizzes\/([^/]+)$/.exec(path);
-    if (m && (method === "PUT" || method === "DELETE")) {
+    if (m && (method === "GET" || method === "PUT" || method === "DELETE")) {
       const id = parseIdParam(m[1]!);
       if (id === undefined) return json({ error: "idが不正です" }, 400);
+      if (method === "GET") {
+        const quiz = await repo.getQuizWithBreadcrumb(db, id);
+        if (!quiz) return json({ error: "quizがありません" }, 404);
+        return json({ quiz });
+      }
       if (method === "PUT") {
         const body = await readJson(req);
         if ("res" in body) return body.res;
@@ -581,11 +586,17 @@ async function route(req: Request, env: Env): Promise<Response> {
   }
 
   // 挑戦状態の取得 (中断からの再開用。回答済み分の結果のみ含み、未回答の正解は含まない)
+  // ?detail=full で履歴詳細ページ用の問題単位の掘り下げ (出題スナップショット固定) を返す。
   {
     const m = /^\/api\/attempts\/([^/]+)$/.exec(path);
     if (m && method === "GET") {
       const attemptId = parseIdParam(m[1]!);
       if (attemptId === undefined) return json({ error: "attemptIdが不正です" }, 400);
+      if (url.searchParams.get("detail") === "full") {
+        const detail = await repo.getAttemptDetail(db, attemptId);
+        if (!detail) return json({ error: "挑戦がありません" }, 404);
+        return json(detail);
+      }
       const state = await repo.getAttemptState(db, attemptId);
       if (!state) return json({ error: "挑戦がありません" }, 404);
       return json(state);

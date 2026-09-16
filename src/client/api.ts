@@ -102,7 +102,40 @@ export interface AttemptRecord {
   total: number;
   completedAt: string | null;
   createdAt: string;
+  durationSec: number | null;
 }
+
+export interface AttemptDetailItem {
+  position: number;
+  attemptQuestionId: number;
+  questionVersionId: number;
+  statement: string;
+  choices: string[];
+  picked: number | null;
+  pickedText: string | null;
+  correctAnswer: number;
+  correct: boolean | null;
+  explanation: string;
+}
+
+export interface AttemptDetail {
+  attemptId: number;
+  quizId: number;
+  score: number;
+  total: number;
+  completedAt: string | null;
+  createdAt: string;
+  durationSec: number | null;
+  items: AttemptDetailItem[];
+}
+
+export const fmtDuration = (sec: number | null | undefined): string => {
+  if (sec === null || sec === undefined) return "";
+  if (sec < 60) return `${sec}秒`;
+  const m = Math.floor(sec / 60);
+  const s = sec % 60;
+  return s ? `${m}分${s}秒` : `${m}分`;
+};
 
 export class ApiError extends Error {
   status: number;

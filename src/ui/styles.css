@@ -994,16 +994,25 @@
   .recent-item {
     display: flex;
     align-items: center;
-    gap: 12px;
-    padding: 12px 14px;
+    gap: 8px;
+    padding: 6px 6px 6px 14px;
     border-radius: var(--r-md);
     background: var(--paper-2);
     border: 1px solid var(--rule-soft);
-    text-decoration: none;
     color: inherit;
   }
   .recent-item:hover {
     border-color: var(--rule);
+  }
+  .recent-main {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 6px 0;
+    text-decoration: none;
+    color: inherit;
   }
   .recent-score {
     font-weight: 800;
@@ -1111,6 +1120,19 @@
     .cat-screen .quiz-list {
       grid-template-columns: repeat(4, minmax(0, 1fr));
     }
+  }
+  .quiz-row-wrap {
+    display: flex;
+    gap: 8px;
+    align-items: stretch;
+  }
+  .quiz-row-main {
+    flex: 1;
+    min-width: 0;
+  }
+  .quiz-hist-link {
+    align-self: center;
+    flex: none;
   }
   .quiz-row {
     display: grid;
@@ -2681,4 +2703,102 @@
 .code-input {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 14px;
+}
+
+/* ===== 履歴詳細ページ (/h/:id) : 回ごとの掘り下げ ===== */
+.hist-band {
+  width: 100%;
+  border-bottom: 1px solid var(--rule-soft);
+  background: var(--paper-2);
+  padding: 20px clamp(16px, 4vw, 48px);
+}
+.hist-band-inner {
+  max-width: 960px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.hist-summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.hist-spark {
+  width: 200px;
+  height: 44px;
+  border: 1px solid var(--rule-soft);
+  border-radius: var(--r-sm);
+  background: var(--paper);
+  padding: 4px;
+}
+.hist-spark path {
+  stroke: var(--moegi);
+}
+.hist-body {
+  width: 100%;
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 20px clamp(16px, 4vw, 48px) 96px;
+}
+.hist-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.hist-card {
+  border: 1px solid var(--rule-soft);
+  border-radius: var(--r-md);
+  background: var(--paper-2);
+  overflow: hidden;
+}
+.hist-card.is-open {
+  border-color: var(--rule);
+}
+.hist-head {
+  width: 100%;
+  display: grid;
+  grid-template-columns: 1fr auto 24px;
+  gap: 10px;
+  align-items: center;
+  padding: 12px 14px;
+  background: none;
+  border: 0;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+}
+.hist-head-main {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+.hist-date {
+  font-size: 13px;
+  font-weight: 600;
+}
+.hist-caret {
+  color: var(--ink-3);
+}
+.hist-detail {
+  border-top: 1px solid var(--rule-soft);
+  padding: 12px 14px 14px;
+}
+.hist-items {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.hist-qhead {
+  display: grid;
+  grid-template-columns: 32px 1fr;
+  gap: 10px;
+  align-items: center;
+  padding: 12px 14px 4px;
+  font-weight: 600;
 }

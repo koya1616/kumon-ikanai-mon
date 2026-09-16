@@ -740,12 +740,139 @@ export async function listAttemptsByQuiz(
   const { results } = await db
     .prepare(
       `SELECT id, quiz_id AS "quizId", score, total,
-        completed_at AS "completedAt", created_at AS "createdAt"
+        completed_at AS "completedAt", created_at AS "createdAt",
+        CASE WHEN completed_at IS NULL THEN NULL
+          ELSE CAST((julianday(completed_at) - julianday(created_at)) * 86400 AS INTEGER)
+        END AS "durationSec"
        FROM attempts WHERE quiz_id = ? ORDER BY id DESC LIMIT ?`,
     )
     .bind(quizId, limit)
     .all<Attempt>();
-  return results;
+  return results.map((r) => ({
+    ...r,
+    durationSec: r.durationSec === null ? null : Number(r.durationSec),
+  }));
+}
+
+/** 履歴詳細: 1回の挑戦を問題単位まで掘り下げて返す (スナップショット固定) */
+export async function getAttemptDetail(
+  db: DB,
+  attemptId: number,
+): Promise<{
+  attemptId: number;
+  quizId: number;
+  score: number;
+  total: number;
+  completedAt: string | null;
+  createdAt: string;
+  durationSec: number | null;
+  items: {
+    position: number;
+    attemptQuestionId: number;
+    questionVersionId: number;
+    statement: string;
+    choices: string[];
+    picked: number | null;
+    pickedText: string | null;
+    correctAnswer: number;
+    correct: boolean | null;
+    explanation: string;
+  }[];
+} | null> {
+  const attempt = await db
+    .prepare(
+      `SELECT id, quiz_id AS "quizId", score, total,
+        completed_at AS "completedAt", created_at AS "createdAt",
+        CASE WHEN completed_at IS NULL THEN NULL
+          ELSE CAST((julianday(completed_at) - julianday(created_at)) * 86400 AS INTEGER)
+        END AS "durationSec"
+       FROM attempts WHERE id = ?`,
+    )
+    .bind(attemptId)
+    .first<{
+      id: number;
+      quizId: number;
+      score: number;
+      total: number;
+      completedAt: string | null;
+      createdAt: string;
+      durationSec: number | null;
+    }>();
+  if (!attempt) return null;
+  const { results: rows } = await db
+    .prepare(
+      `SELECT aq.id AS "attemptQuestionId", aq.position AS "position",
+        v.id AS "questionVersionId", v.statement AS "statement",
+        v.explanation AS "explanation",
+        aa.choice_position AS "picked", aa.choice_text_snapshot AS "pickedText",
+        aa.correct AS "correct",
+        (SELECT position FROM question_choices
+          WHERE question_version_id = aq.question_version_id AND is_correct = 1) AS "correctAnswer"
+       FROM attempt_questions aq
+       JOIN question_versions v ON v.id = aq.question_version_id
+       LEFT JOIN attempt_answers aa ON aa.attempt_question_id = aq.id
+       WHERE aq.attempt_id = ? ORDER BY aq.position`,
+    )
+    .bind(attemptId)
+    .all<{
+      attemptQuestionId: number;
+      position: number;
+      questionVersionId: number;
+      statement: string;
+      explanation: string | null;
+      picked: number | null;
+      pickedText: string | null;
+      correct: number | null;
+      correctAnswer: number | null;
+    }>();
+  if (!rows.length) {
+    return {
+      attemptId: attempt.id,
+      quizId: attempt.quizId,
+      score: Number(attempt.score),
+      total: Number(attempt.total),
+      completedAt: attempt.completedAt,
+      createdAt: attempt.createdAt,
+      durationSec: attempt.durationSec === null ? null : Number(attempt.durationSec),
+      items: [],
+    };
+  }
+  const ids = rows.map((r) => r.questionVersionId);
+  const placeholders = ids.map(() => "?").join(",");
+  const { results: choiceRows } = await db
+    .prepare(
+      `SELECT question_version_id AS "versionId", position, choice_text AS "text"
+       FROM question_choices WHERE question_version_id IN (${placeholders}) ORDER BY question_version_id, position`,
+    )
+    .bind(...ids)
+    .all<{ versionId: number; position: number; text: string }>();
+  const byVersion = new Map<number, string[]>();
+  for (const c of choiceRows) {
+    const arr = byVersion.get(c.versionId) ?? [];
+    arr[c.position - 1] = c.text;
+    byVersion.set(c.versionId, arr);
+  }
+  return {
+    attemptId: attempt.id,
+    quizId: attempt.quizId,
+    score: Number(attempt.score),
+    total: Number(attempt.total),
+    completedAt: attempt.completedAt,
+    createdAt: attempt.createdAt,
+    durationSec: attempt.durationSec === null ? null : Number(attempt.durationSec),
+    items: rows.map((r) => ({
+      position: Number(r.position),
+      attemptQuestionId: Number(r.attemptQuestionId),
+      questionVersionId: Number(r.questionVersionId),
+      statement: r.statement,
+      choices: byVersion.get(r.questionVersionId) ?? [],
+      picked: r.picked === null ? null : Number(r.picked),
+      pickedText: r.pickedText,
+      correctAnswer: Number(r.correctAnswer ?? 0),
+      correct: r.correct === null ? null : r.correct === 1,
+      explanation: r.explanation ?? "",
+    })),
+  };
 }
 
 export async function listAttemptSummaries(db: DB): Promise<AttemptSummary[]> {

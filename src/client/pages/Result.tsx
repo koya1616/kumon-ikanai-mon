@@ -263,6 +263,9 @@ export const Result = () => {
               )}
             </div>
             <div className="result-aside-actions">
+              <Link className="btn btn-block" to={`/h/${ses.quiz.id}`}>
+                詳しい履歴を見る
+              </Link>
               <button
                 type="button"
                 className="btn btn-ink btn-block"

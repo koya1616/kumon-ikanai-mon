@@ -215,16 +215,29 @@ export const Home = () => {
                       const f = findQuiz(s.quizId);
                       if (!f) return null;
                       return (
-                        <Link key={s.quizId} className="recent-item" to={`/play/${s.quizId}`}>
-                          <div className="grow">
-                            <div style={{ fontWeight: 700 }}>{f.quiz.title}</div>
-                            <div className="muted">{`${f.category.title} › ${f.topic.title} · ${fmtDate(s.lastCompletedAt)}`}</div>
-                          </div>
-                          <div className="recent-score">
-                            最高 {s.bestScore}/{s.bestTotal}
-                          </div>
-                          <Icon name="arrow" />
-                        </Link>
+                        <div key={s.quizId} className="recent-item">
+                          <Link
+                            className="recent-main"
+                            to={`/play/${s.quizId}`}
+                            aria-label={`${f.quiz.title}に挑戦する`}
+                          >
+                            <div className="grow">
+                              <div style={{ fontWeight: 700 }}>{f.quiz.title}</div>
+                              <div className="muted">{`${f.category.title} › ${f.topic.title} · ${fmtDate(s.lastCompletedAt)}`}</div>
+                            </div>
+                            <div className="recent-score">
+                              最高 {s.bestScore}/{s.bestTotal}
+                            </div>
+                            <Icon name="arrow" />
+                          </Link>
+                          <Link
+                            className="btn btn-sm btn-ghost"
+                            to={`/h/${s.quizId}`}
+                            aria-label={`${f.quiz.title}の履歴を見る`}
+                          >
+                            履歴
+                          </Link>
+                        </div>
                       );
                     })}
                   </div>
