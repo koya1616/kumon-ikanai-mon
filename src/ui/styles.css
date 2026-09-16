@@ -1275,9 +1275,18 @@
     transform: translateY(110%);
     transition: transform 0.32s var(--ease);
     padding: 0 12px calc(12px + env(safe-area-inset-bottom));
+    /* カード以外の余白は背景操作を通す: 問題文・4択が見える位置までスクロールできる */
+    pointer-events: none;
   }
   .sheet.is-open {
     transform: none;
+  }
+  /* 解説表示中は背景をシート分だけ余分にスクロールできるようにする */
+  .play:has(.sheet.is-open) .play-body {
+    padding-bottom: 62dvh;
+  }
+  .play:has(.sheet.is-collapsed) .play-body {
+    padding-bottom: 200px;
   }
   .sheet-card {
     max-width: 720px;
@@ -1290,8 +1299,13 @@
     display: flex;
     flex-direction: column;
     gap: 12px;
-    max-height: 60dvh;
+    max-height: 52dvh;
     overflow: auto;
+    pointer-events: auto;
+  }
+  .sheet.is-collapsed .sheet-card {
+    max-height: none;
+    overflow: visible;
   }
   .sheet-card.is-ok {
     border-top: 6px solid var(--moegi);
@@ -1365,6 +1379,10 @@
   .sheet-title .kbd {
     margin-left: auto;
   }
+  .sheet-toggle {
+    margin-left: auto;
+    flex: none;
+  }
   .sheet-exp {
     font-size: 15px;
     line-height: 1.7;
@@ -1374,7 +1392,11 @@
   .sheet-actions {
     display: flex;
     justify-content: flex-end;
+    align-items: center;
     gap: 8px;
+  }
+  .sheet-hint {
+    margin-right: auto;
   }
 
   .play-quit {

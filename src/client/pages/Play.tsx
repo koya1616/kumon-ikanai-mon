@@ -269,6 +269,7 @@ const PlayingScreen = ({ play, onChange }: { play: LivePlay; onChange: (p: LiveP
   const navigate = useNavigate();
   const toast = useToast();
   const dialog = useDialog();
+  const [expCollapsed, setExpCollapsed] = useState(false);
 
   const q = play.questions[play.index]!;
   const revealed = play.answers.length > play.index;
@@ -335,6 +336,7 @@ const PlayingScreen = ({ play, onChange }: { play: LivePlay; onChange: (p: LiveP
   // 次へボタンを回答後にフォーカス (Enter ですぐ進める)
   useEffect(() => {
     if (revealed) {
+      setExpCollapsed(false);
       document.getElementById("play-next")?.focus({ preventScroll: true });
     }
   }, [revealed, play.index]);
@@ -476,7 +478,7 @@ const PlayingScreen = ({ play, onChange }: { play: LivePlay; onChange: (p: LiveP
             <span className="kbd">Enter</span> で次へ
           </p>
         </div>
-        <div className={`sheet${result ? " is-open" : ""}`}>
+        <div className={`sheet${result ? " is-open" : ""}${expCollapsed ? " is-collapsed" : ""}`}>
           {result && (
             <div className={`sheet-card ${result.ok ? "is-ok" : "is-ng"}`}>
               <div className="sheet-title">
@@ -487,12 +489,22 @@ const PlayingScreen = ({ play, onChange }: { play: LivePlay; onChange: (p: LiveP
                 <span className="sheet-score">
                   現在 {score} / {play.index + 1} 正解
                 </span>
-                <span className="kbd">Enter</span>
+                <button
+                  type="button"
+                  className="btn btn-sm btn-ghost sheet-toggle"
+                  onClick={() => setExpCollapsed((v) => !v)}
+                  aria-expanded={!expCollapsed}
+                >
+                  {expCollapsed ? "解説を見る" : "隠す"}
+                </button>
               </div>
-              <div className="sheet-exp rich">
-                <RichText text={result.exp || "（解説はありません）"} />
-              </div>
+              {!expCollapsed && (
+                <div className="sheet-exp rich">
+                  <RichText text={result.exp || "（解説はありません）"} />
+                </div>
+              )}
               <div className="sheet-actions">
+                <span className="kbd sheet-hint">Enterで次へ</span>
                 <button
                   id="play-next"
                   type="button"
