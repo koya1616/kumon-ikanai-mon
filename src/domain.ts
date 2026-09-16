@@ -87,7 +87,7 @@ export interface CategoryTreeNode {
 }
 
 // ---------- validation (拡張時はここだけ触る) ----------
-// Hono 4 + Zod v4 推奨: ルート層では下のスキーマ + zValidator を使うこと。
+// Zod v4 推奨: ルート層では下のスキーマで safeParse し、失敗時は 400 { error } を返すこと。
 // 既存の assert* は後方互換のため残す (内部実装はスキーマに委譲)。
 
 export const titleSchema = z.string().trim().min(1).max(TITLE_MAX_LENGTH);

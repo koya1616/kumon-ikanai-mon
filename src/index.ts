@@ -1,10 +1,4 @@
 /// <reference types="@cloudflare/workers-types" />
-import { Hono } from "hono";
-import { basicAuth } from "hono/basic-auth";
-import { logger } from "hono/logger";
-import { secureHeaders } from "hono/secure-headers";
-import { HTTPException } from "hono/http-exception";
-import { zValidator } from "@hono/zod-validator";
 import { z } from "zod";
 import { html } from "./view";
 import { QUESTIONS_PER_QUIZ } from "./domain";
@@ -32,67 +26,97 @@ type Env = {
   BASIC_PASS?: string;
 };
 
-const app = new Hono<{ Bindings: Env }>();
+// ---------- レスポンス基盤 (Web標準のみ。フレームワーク不使用) ----------
 
-// 2026推奨ミドルウェア: ログ + セキュリティヘッダ (XSS/クリックジャッキング/CSP等の基礎)
-app.use(logger());
-app.use(secureHeaders());
-
-// ヘルスチェックは認証の前に公開する (監視・死活確認のため)
-app.get("/health", (c) => c.json({ ok: true }));
-
-// Basic認証: デフォルト認証情報へのフォールバックは禁止 (fail-closed)。
-// BASIC_USER / BASIC_PASS 未設定は 500 で明示的に落とす。
-// NOTE: "/" はこのミドルウェアより後に登録すること (Honoは登録順に実行されるため、
-// 先に登録すると認証をすり抜けて公開されてしまう)。公開するのは /health のみ。
-app.use("*", async (c, next) => {
-  const username = c.env.BASIC_USER;
-  const password = c.env.BASIC_PASS;
-  if (!username || !password) {
-    throw new HTTPException(500, { message: "BASIC_USER / BASIC_PASS が未設定です" });
-  }
-  return basicAuth({ username, password })(c, next);
-});
-
-app.get("/", (c) => c.html(html));
-
-// 統一エラーレスポンス: { error: string }
-// NOTE: basicAuthはmessageなし・WWW-Authenticate付きresで401を投げる。
-// そのままJSON化すると {"error":""} になり、チャレンジヘッダが無いと
-// ブラウザがログイン画面を出さないため、401はヘッダ転送＋文言補完する。
-app.onError((err, c) => {
-  if (err instanceof HTTPException) {
-    if (err.status === 401) {
-      const challenge =
-        err.getResponse().headers.get("WWW-Authenticate") ?? 'Basic realm="Secure Area"';
-      c.header("WWW-Authenticate", challenge);
-      return c.json({ error: err.message || "認証が必要です" }, 401);
-    }
-    return c.json({ error: err.message }, err.status);
-  }
-  console.error(err);
-  return c.json({ error: "内部エラーが発生しました" }, 500);
-});
-app.notFound((c) => c.json({ error: "見つかりません" }, 404));
-
-const validationHook = (
-  result: { success: boolean; error?: { issues?: { message?: string }[] } },
-  c: { json: (o: unknown, s: number) => Response },
-) => {
-  if (!result.success) {
-    const issue = result.error?.issues?.[0]?.message;
-    return c.json({ error: issue ?? "入力が不正です" }, 400);
-  }
-  return undefined;
+const SECURITY_HEADERS: Record<string, string> = {
+  "X-Content-Type-Options": "nosniff",
+  "X-Frame-Options": "SAMEORIGIN",
+  "Referrer-Policy": "strict-origin-when-cross-origin",
 };
 
-// zValidatorのhook型に合わせるための薄いラッパー (型は委譲し実態はvalidationHook)
-const hook = validationHook as never;
+function json(data: unknown, status = 200, extra?: Record<string, string>): Response {
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: {
+      "Content-Type": "application/json; charset=UTF-8",
+      ...SECURITY_HEADERS,
+      ...extra,
+    },
+  });
+}
 
-const parseIdParam = (raw: string): number | undefined => {
+function unauthorized(): Response {
+  return json({ error: "認証が必要です" }, 401, {
+    "WWW-Authenticate": 'Basic realm="Secure Area"',
+  });
+}
+
+// ---------- Basic認証 (fail-closed + タイミングセーフ比較) ----------
+// デフォルト認証情報へのフォールバックは禁止。BASIC_USER / BASIC_PASS 未設定は
+// 500 で明示的に落とす。公開するのは /health のみ。
+
+async function timingSafeEqual(a: string, b: string): Promise<boolean> {
+  const enc = new TextEncoder();
+  const [da, db] = await Promise.all([
+    crypto.subtle.digest("SHA-256", enc.encode(a)),
+    crypto.subtle.digest("SHA-256", enc.encode(b)),
+  ]);
+  const xa = new Uint8Array(da);
+  const xb = new Uint8Array(db);
+  if (xa.length !== xb.length) return false;
+  let diff = 0;
+  for (let i = 0; i < xa.length; i++) diff |= xa[i]! ^ xb[i]!;
+  return diff === 0;
+}
+
+async function checkAuth(req: Request, env: Env): Promise<Response | null> {
+  const username = env.BASIC_USER;
+  const password = env.BASIC_PASS;
+  if (!username || !password) {
+    return json({ error: "BASIC_USER / BASIC_PASS が未設定です" }, 500);
+  }
+  const m = req.headers.get("Authorization")?.match(/^Basic (.+)$/);
+  if (m?.[1]) {
+    try {
+      const decoded = atob(m[1]);
+      const idx = decoded.indexOf(":");
+      const u = idx < 0 ? decoded : decoded.slice(0, idx);
+      const p = idx < 0 ? "" : decoded.slice(idx + 1);
+      if ((await timingSafeEqual(u, username)) && (await timingSafeEqual(p, password))) {
+        return null;
+      }
+    } catch {
+      /* base64 不正は認証失敗として扱う */
+    }
+  }
+  return unauthorized();
+}
+
+// ---------- 入力バリデーション (Zod 直利用) ----------
+
+/** 失敗時は 400 { error } を返す。成功時はパース済みデータを返す。 */
+function validated<T>(parsed: {
+  success: boolean;
+  data?: T;
+  error?: { issues?: { message?: string }[] };
+}): { data: T } | { res: Response } {
+  if (parsed.success) return { data: parsed.data as T };
+  const issue = parsed.error?.issues?.[0]?.message;
+  return { res: json({ error: issue ?? "入力が不正です" }, 400) };
+}
+
+function parseIdParam(raw: string): number | undefined {
   const parsed = idParamSchema.safeParse(raw);
   return parsed.success ? parsed.data : undefined;
-};
+}
+
+async function readJson(req: Request): Promise<{ value: unknown } | { res: Response }> {
+  try {
+    return { value: (await req.json()) as unknown };
+  } catch {
+    return { res: json({ error: "入力が不正です" }, 400) };
+  }
+}
 
 /** Fisher–Yates (crypto乱数版: Math.randomより予測困難) */
 function shuffle<T>(arr: T[]): T[] {
@@ -106,383 +130,491 @@ function shuffle<T>(arr: T[]): T[] {
   return a;
 }
 
-// ---------- Category ----------
-
-app.get("/api/categories", async (c) => {
-  return c.json(await repo.listCategories(c.env.DB));
-});
-
-app.post("/api/categories", zValidator("json", categoryBodySchema, hook), async (c) => {
-  const { title } = c.req.valid("json");
-  try {
-    const id = await repo.createCategory(c.env.DB, title);
-    return c.json({ id, title }, 201);
-  } catch {
-    return c.json({ error: "同名のcategoryが既にあります" }, 409);
-  }
-});
-
-app.put("/api/categories/:id", zValidator("json", categoryBodySchema, hook), async (c) => {
-  const id = parseIdParam(c.req.param("id"));
-  if (id === undefined) return c.json({ error: "idが不正です" }, 400);
-  const { title } = c.req.valid("json");
-  await repo.renameCategory(c.env.DB, id, title);
-  return c.json({ ok: true });
-});
-
 const HISTORY_LOCK_MESSAGE =
   "受験履歴があるため削除できません。履歴を残す仕様のため、削除ではなく新規作成で対応してください。";
 
-app.delete("/api/categories/:id", async (c) => {
-  const categoryId = parseIdParam(c.req.param("id"));
-  if (categoryId === undefined) return c.json({ error: "idが不正です" }, 400);
-  if (await repo.categoryHasAttempts(c.env.DB, categoryId)) {
-    return c.json({ error: HISTORY_LOCK_MESSAGE }, 409);
-  }
-  try {
-    await repo.deleteCategory(c.env.DB, categoryId);
-  } catch (e) {
-    if (repo.isForeignKeyError(e)) return c.json({ error: HISTORY_LOCK_MESSAGE }, 409);
-    throw e;
-  }
-  return c.json({ ok: true });
-});
-
-// ---------- Topic ----------
-
-app.get(
-  "/api/topics",
-  zValidator("query", z.object({ categoryId: idParamSchema.optional() }), hook),
-  async (c) => {
-    const { categoryId } = c.req.valid("query");
-    return c.json(await repo.listTopics(c.env.DB, categoryId));
-  },
-);
-
-app.post("/api/topics", zValidator("json", topicBodySchema, hook), async (c) => {
-  const { categoryId, title } = c.req.valid("json");
-  try {
-    const id = await repo.createTopic(c.env.DB, categoryId, title);
-    return c.json({ id }, 201);
-  } catch {
-    return c.json({ error: "同名のtopicが既にあります / categoryが存在しません" }, 409);
-  }
-});
-
-app.put("/api/topics/:id", zValidator("json", topicPatchSchema, hook), async (c) => {
-  const id = parseIdParam(c.req.param("id"));
-  if (id === undefined) return c.json({ error: "idが不正です" }, 400);
-  await repo.updateTopic(c.env.DB, id, c.req.valid("json"));
-  return c.json({ ok: true });
-});
-
-app.delete("/api/topics/:id", async (c) => {
-  const topicId = parseIdParam(c.req.param("id"));
-  if (topicId === undefined) return c.json({ error: "idが不正です" }, 400);
-  if (await repo.topicHasAttempts(c.env.DB, topicId)) {
-    return c.json({ error: HISTORY_LOCK_MESSAGE }, 409);
-  }
-  try {
-    await repo.deleteTopic(c.env.DB, topicId);
-  } catch (e) {
-    if (repo.isForeignKeyError(e)) return c.json({ error: HISTORY_LOCK_MESSAGE }, 409);
-    throw e;
-  }
-  return c.json({ ok: true });
-});
-
-// ---------- Quiz ----------
-
-app.get(
-  "/api/quizzes",
-  zValidator(
-    "query",
-    z.object({
-      topicId: idParamSchema.optional(),
-      categoryId: idParamSchema.optional(),
-      difficulty: z.coerce.number().int().min(1).max(5).optional(),
-      status: z.enum(["draft", "published", "archived"]).optional(),
-    }),
-    hook,
-  ),
-  async (c) => {
-    return c.json(await repo.listQuizzes(c.env.DB, c.req.valid("query")));
-  },
-);
-
-app.post("/api/quizzes", zValidator("json", quizBodySchema, hook), async (c) => {
-  const { topicId, title, difficulty, status } = c.req.valid("json");
-  try {
-    const id = await repo.createQuiz(c.env.DB, topicId, title, difficulty, status ?? "published");
-    return c.json({ id }, 201);
-  } catch {
-    return c.json({ error: "同名のquizが既にあります / topicが存在しません" }, 409);
-  }
-});
-
-// JSON一括取込: category/topic を find-or-create し、quiz + 10問を作成する。
-// scripts/add-quiz.mjs と同等の処理を管理画面フォームから行うためのエンドポイント。
-// 同名quizが同一topicに存在する場合は409で中断する (誤上書き防止)。
-app.post("/api/quizzes/import", zValidator("json", quizImportSchema, hook), async (c) => {
-  const input = c.req.valid("json");
-
-  // 1. category find-or-create
-  const categories = await repo.listCategories(c.env.DB);
-  let categoryId: number | undefined = categories.find((x) => x.title === input.category)?.id;
-  if (categoryId === undefined) {
-    try {
-      categoryId = await repo.createCategory(c.env.DB, input.category);
-    } catch {
-      return c.json({ error: "同名のcategoryが既にあります" }, 409);
-    }
-  }
-
-  // 2. topic find-or-create
-  const topics = await repo.listTopics(c.env.DB, categoryId);
-  let topicId: number | undefined = topics.find((x) => x.title === input.topic)?.id;
-  if (topicId === undefined) {
-    try {
-      topicId = await repo.createTopic(c.env.DB, categoryId, input.topic);
-    } catch {
-      return c.json({ error: "同名のtopicが既にあります / categoryが存在しません" }, 409);
-    }
-  }
-
-  // 3. quiz 重複チェック (同一topicに同名があれば中断)
-  const existing = await repo.listQuizzes(c.env.DB, { topicId });
-  if (existing.some((q) => q.title === input.quiz.title)) {
-    return c.json(
-      { error: "同名のquizが既にあります。既存の編集は管理画面から行ってください" },
-      409,
-    );
-  }
-
-  // 4. quiz作成 + 10問登録
-  let quizId: number;
-  try {
-    quizId = await repo.createQuiz(
-      c.env.DB,
-      topicId,
-      input.quiz.title,
-      input.quiz.difficulty,
-      input.quiz.status,
-    );
-  } catch {
-    return c.json({ error: "同名のquizが既にあります / topicが存在しません" }, 409);
-  }
-  try {
-    const count = await repo.replaceQuestions(
-      c.env.DB,
-      quizId,
-      input.questions.map((q) => ({ ...q, explanation: q.explanation ?? "" })),
-    );
-    return c.json({ categoryId, topicId, quizId, count }, 201);
-  } catch (e) {
-    // quizだけ作成済みの状態。管理画面から問題を追記できるようidを返す
-    return c.json({ error: (e as Error).message, quizId, topicId, categoryId }, 400);
-  }
-});
-
-app.put("/api/quizzes/:id", zValidator("json", quizPatchSchema, hook), async (c) => {
-  const id = parseIdParam(c.req.param("id"));
-  if (id === undefined) return c.json({ error: "idが不正です" }, 400);
-  await repo.updateQuiz(c.env.DB, id, c.req.valid("json"));
-  return c.json({ ok: true });
-});
-
-app.delete("/api/quizzes/:id", async (c) => {
-  const quizId = parseIdParam(c.req.param("id"));
-  if (quizId === undefined) return c.json({ error: "idが不正です" }, 400);
-  if (await repo.quizHasAttempts(c.env.DB, quizId)) {
-    return c.json({ error: HISTORY_LOCK_MESSAGE }, 409);
-  }
-  try {
-    await repo.deleteQuiz(c.env.DB, quizId);
-  } catch (e) {
-    if (repo.isForeignKeyError(e)) return c.json({ error: HISTORY_LOCK_MESSAGE }, 409);
-    throw e;
-  }
-  return c.json({ ok: true });
-});
-
-// 出題用: 答え・解説は隠す。published以外は出題除外
-app.get("/api/quizzes/:id/play", async (c) => {
-  const quizId = parseIdParam(c.req.param("id"));
-  if (quizId === undefined) return c.json({ error: "quizIdが不正です" }, 400);
-  const quiz = await repo.getQuizWithBreadcrumb(c.env.DB, quizId);
-  if (!quiz) return c.json({ error: "quizがありません" }, 404);
-  if ((quiz as { status?: string }).status === "archived") {
-    return c.json({ error: "このクイズは公開終了のため受験できません" }, 410);
-  }
-  if ((quiz as { status?: string }).status !== "published") {
-    return c.json({ error: "このクイズはまだ公開されていません" }, 403);
-  }
-  const questions = await repo.listPlayQuestions(c.env.DB, quizId);
-  if (questions.length !== QUESTIONS_PER_QUIZ) {
-    return c.json(
-      {
-        error: `このクイズは${QUESTIONS_PER_QUIZ}問揃っていません（現在${questions.length}問）。管理タブで${QUESTIONS_PER_QUIZ}問登録してください。`,
-      },
-      422,
-    );
-  }
-  return c.json({ quiz, questions: shuffle(questions) });
-});
-
-// ---------- Question (管理: 答え付き) ----------
-
-app.get(
-  "/api/questions",
-  zValidator("query", z.object({ quizId: idParamSchema }), hook),
-  async (c) => {
-    const { quizId } = c.req.valid("query");
-    return c.json(await repo.listQuestionsByQuiz(c.env.DB, quizId));
-  },
-);
-
-app.post("/api/questions", zValidator("json", questionCreateSchema, hook), async (c) => {
-  const { quizId, ...q } = c.req.valid("json");
-  const id = await repo.createQuestion(c.env.DB, quizId, {
-    ...q,
-    explanation: q.explanation ?? "",
-  });
-  return c.json({ id }, 201);
-});
-
 const ANSWERED_LOCK_MESSAGE = "受験履歴のある問題は削除できません。archived化で対応してください。";
 
-app.put("/api/questions/:id", zValidator("json", questionSchema, hook), async (c) => {
-  const questionId = parseIdParam(c.req.param("id"));
-  if (questionId === undefined) return c.json({ error: "idが不正です" }, 400);
-  // versioningのため履歴があっても編集可 (= 新しいversionを発行する)
-  const q = c.req.valid("json");
-  try {
-    await repo.updateQuestion(c.env.DB, questionId, { ...q, explanation: q.explanation ?? "" });
-  } catch (e) {
-    return c.json({ error: (e as Error).message }, 404);
-  }
-  return c.json({ ok: true });
-});
+// ---------- ルーティング (exact match を :id より先に評価する) ----------
 
-app.delete("/api/questions/:id", async (c) => {
-  const questionId = parseIdParam(c.req.param("id"));
-  if (questionId === undefined) return c.json({ error: "idが不正です" }, 400);
-  if (await repo.questionHasAnswers(c.env.DB, questionId)) {
-    return c.json({ error: ANSWERED_LOCK_MESSAGE }, 409);
-  }
-  try {
-    await repo.deleteQuestion(c.env.DB, questionId);
-  } catch (e) {
-    if (repo.isForeignKeyError(e)) return c.json({ error: ANSWERED_LOCK_MESSAGE }, 409);
-    throw e;
-  }
-  return c.json({ ok: true });
-});
+async function route(req: Request, env: Env): Promise<Response> {
+  const url = new URL(req.url);
+  const path = url.pathname;
+  const method = req.method.toUpperCase();
+  const db = env.DB;
 
-// 10問保存: versioning方式 (履歴があっても新version発行で保存可。問題数削減のみ履歴ありは不可)
-app.post("/api/questions/batch", zValidator("json", questionBatchSchema, hook), async (c) => {
-  const { quizId, questions } = c.req.valid("json");
-  try {
-    const count = await repo.replaceQuestions(
-      c.env.DB,
-      quizId,
-      questions.map((q) => ({ ...q, explanation: q.explanation ?? "" })),
-    );
-    return c.json({ ok: true, count });
-  } catch (e) {
-    return c.json({ error: (e as Error).message }, 400);
-  }
-});
+  // ヘルスチェックは認証の前に公開する (監視・死活確認のため)
+  if (method === "GET" && path === "/health") return json({ ok: true });
 
-// ---------- Attempt (解答結果の蓄積: 上書きせず溜めていく) ----------
+  const auth = await checkAuth(req, env);
+  if (auth) return auth;
 
-// 挑戦開始 (出題スナップショットをattempt_questionsに固定して返す)
-app.post("/api/quizzes/:id/attempts", async (c) => {
-  const quizId = parseIdParam(c.req.param("id"));
-  if (quizId === undefined) return c.json({ error: "quizIdが不正です" }, 400);
-  const quiz = await repo.getQuizWithBreadcrumb(c.env.DB, quizId);
-  if (!quiz) return c.json({ error: "quizがありません" }, 404);
-  if ((quiz as { status?: string }).status === "archived") {
-    return c.json({ error: "このクイズは公開終了のため受験できません" }, 410);
+  if (method === "GET" && path === "/") {
+    return new Response(html, {
+      headers: { "Content-Type": "text/html; charset=UTF-8", ...SECURITY_HEADERS },
+    });
   }
-  if ((quiz as { status?: string }).status !== "published") {
-    return c.json({ error: "このクイズはまだ公開されていません" }, 403);
-  }
-  const ready = await repo.countQuestions(c.env.DB, quizId);
-  if (ready !== QUESTIONS_PER_QUIZ) {
-    return c.json(
-      {
-        error: `このクイズは${QUESTIONS_PER_QUIZ}問揃っていません（現在${ready}問）。管理タブで${QUESTIONS_PER_QUIZ}問登録してください。`,
-      },
-      422,
-    );
-  }
-  const { attemptId, questions } = await repo.createAttempt(c.env.DB, quizId);
-  return c.json({ attemptId, questions }, 201);
-});
 
-// 1問回答 (記録 + 採点)
-app.post("/api/attempts/:id/answers", zValidator("json", answerBodySchema, hook), async (c) => {
-  const attemptId = parseIdParam(c.req.param("id"));
-  if (attemptId === undefined) return c.json({ error: "attemptIdが不正です" }, 400);
-  const { attemptQuestionId, choice } = c.req.valid("json");
-  try {
-    return c.json(await repo.recordAnswer(c.env.DB, attemptId, attemptQuestionId, choice));
-  } catch (e) {
-    const message = (e as Error).message;
-    if (message === "挑戦がありません" || message === "問題がありません") {
-      return c.json({ error: message }, 404);
+  // ---------- Category ----------
+  if (path === "/api/categories") {
+    if (method === "GET") return json(await repo.listCategories(db));
+    if (method === "POST") {
+      const body = await readJson(req);
+      if ("res" in body) return body.res;
+      const v = validated(categoryBodySchema.safeParse(body.value));
+      if ("res" in v) return v.res;
+      try {
+        const id = await repo.createCategory(db, v.data.title);
+        return json({ id, title: v.data.title }, 201);
+      } catch {
+        return json({ error: "同名のcategoryが既にあります" }, 409);
+      }
     }
-    if (message === "この挑戦の問題ではありません") {
-      return c.json({ error: message }, 422);
+  }
+  {
+    const m = /^\/api\/categories\/([^/]+)$/.exec(path);
+    if (m) {
+      const id = parseIdParam(m[1]!);
+      if (id === undefined) return json({ error: "idが不正です" }, 400);
+      if (method === "PUT") {
+        const body = await readJson(req);
+        if ("res" in body) return body.res;
+        const v = validated(categoryBodySchema.safeParse(body.value));
+        if ("res" in v) return v.res;
+        await repo.renameCategory(db, id, v.data.title);
+        return json({ ok: true });
+      }
+      if (method === "DELETE") {
+        if (await repo.categoryHasAttempts(db, id)) {
+          return json({ error: HISTORY_LOCK_MESSAGE }, 409);
+        }
+        try {
+          await repo.deleteCategory(db, id);
+        } catch (e) {
+          if (repo.isForeignKeyError(e)) return json({ error: HISTORY_LOCK_MESSAGE }, 409);
+          throw e;
+        }
+        return json({ ok: true });
+      }
     }
-    return c.json({ error: message }, 400);
   }
-});
 
-// 挑戦状態の取得 (中断からの再開用。回答済み分の結果のみ含み、未回答の正解は含まない)
-app.get("/api/attempts/:id", async (c) => {
-  const attemptId = parseIdParam(c.req.param("id"));
-  if (attemptId === undefined) return c.json({ error: "attemptIdが不正です" }, 400);
-  const state = await repo.getAttemptState(c.env.DB, attemptId);
-  if (!state) return c.json({ error: "挑戦がありません" }, 404);
-  return c.json(state);
-});
-
-// 挑戦完了 (スコア確定)
-app.post("/api/attempts/:id/complete", async (c) => {
-  const attemptId = parseIdParam(c.req.param("id"));
-  if (attemptId === undefined) return c.json({ error: "attemptIdが不正です" }, 400);
-  try {
-    return c.json(await repo.completeAttempt(c.env.DB, attemptId));
-  } catch (e) {
-    const message = (e as Error).message;
-    return c.json({ error: message }, message === "挑戦がありません" ? 404 : 400);
+  // ---------- Topic ----------
+  if (path === "/api/topics") {
+    if (method === "GET") {
+      const raw = url.searchParams.get("categoryId") ?? undefined;
+      const v = validated(
+        z.object({ categoryId: idParamSchema.optional() }).safeParse({ categoryId: raw }),
+      );
+      if ("res" in v) return v.res;
+      return json(await repo.listTopics(db, v.data.categoryId));
+    }
+    if (method === "POST") {
+      const body = await readJson(req);
+      if ("res" in body) return body.res;
+      const v = validated(topicBodySchema.safeParse(body.value));
+      if ("res" in v) return v.res;
+      try {
+        const id = await repo.createTopic(db, v.data.categoryId, v.data.title);
+        return json({ id }, 201);
+      } catch {
+        return json({ error: "同名のtopicが既にあります / categoryが存在しません" }, 409);
+      }
+    }
   }
-});
+  {
+    const m = /^\/api\/topics\/([^/]+)$/.exec(path);
+    if (m) {
+      const id = parseIdParam(m[1]!);
+      if (id === undefined) return json({ error: "idが不正です" }, 400);
+      if (method === "PUT") {
+        const body = await readJson(req);
+        if ("res" in body) return body.res;
+        const v = validated(topicPatchSchema.safeParse(body.value));
+        if ("res" in v) return v.res;
+        await repo.updateTopic(db, id, v.data);
+        return json({ ok: true });
+      }
+      if (method === "DELETE") {
+        if (await repo.topicHasAttempts(db, id)) {
+          return json({ error: HISTORY_LOCK_MESSAGE }, 409);
+        }
+        try {
+          await repo.deleteTopic(db, id);
+        } catch (e) {
+          if (repo.isForeignKeyError(e)) return json({ error: HISTORY_LOCK_MESSAGE }, 409);
+          throw e;
+        }
+        return json({ ok: true });
+      }
+    }
+  }
 
-// quizの挑戦履歴
-app.get(
-  "/api/quizzes/:id/attempts",
-  zValidator("query", z.object({ limit: z.coerce.number().int().optional() }), hook),
-  async (c) => {
-    const quizId = parseIdParam(c.req.param("id"));
-    if (quizId === undefined) return c.json({ error: "quizIdが不正です" }, 400);
-    const rawLimit = c.req.valid("query").limit ?? 10;
-    const limit = Math.min(Math.max(rawLimit, 1), 50);
-    return c.json(await repo.listAttemptsByQuiz(c.env.DB, quizId, limit));
+  // ---------- Quiz ----------
+  if (path === "/api/quizzes") {
+    if (method === "GET") {
+      const v = validated(
+        z
+          .object({
+            topicId: idParamSchema.optional(),
+            categoryId: idParamSchema.optional(),
+            difficulty: z.coerce.number().int().min(1).max(5).optional(),
+            status: z.enum(["draft", "published", "archived"]).optional(),
+          })
+          .safeParse({
+            topicId: url.searchParams.get("topicId") ?? undefined,
+            categoryId: url.searchParams.get("categoryId") ?? undefined,
+            difficulty: url.searchParams.get("difficulty") ?? undefined,
+            status: url.searchParams.get("status") ?? undefined,
+          }),
+      );
+      if ("res" in v) return v.res;
+      return json(await repo.listQuizzes(db, v.data));
+    }
+    if (method === "POST") {
+      const body = await readJson(req);
+      if ("res" in body) return body.res;
+      const v = validated(quizBodySchema.safeParse(body.value));
+      if ("res" in v) return v.res;
+      try {
+        const id = await repo.createQuiz(
+          db,
+          v.data.topicId,
+          v.data.title,
+          v.data.difficulty,
+          v.data.status,
+        );
+        return json({ id }, 201);
+      } catch {
+        return json({ error: "同名のquizが既にあります / topicが存在しません" }, 409);
+      }
+    }
+  }
+
+  // JSON一括取込: category/topic を find-or-create し、quiz + 10問を作成する。
+  // scripts/add-quiz.mjs と同等の処理を管理画面フォームから行うためのエンドポイント。
+  // 同名quizが同一topicに存在する場合は409で中断する (誤上書き防止)。
+  if (path === "/api/quizzes/import" && method === "POST") {
+    const body = await readJson(req);
+    if ("res" in body) return body.res;
+    const v = validated(quizImportSchema.safeParse(body.value));
+    if ("res" in v) return v.res;
+    const input = v.data;
+
+    // 1. category find-or-create
+    const categories = await repo.listCategories(db);
+    let categoryId: number | undefined = categories.find((x) => x.title === input.category)?.id;
+    if (categoryId === undefined) {
+      try {
+        categoryId = await repo.createCategory(db, input.category);
+      } catch {
+        return json({ error: "同名のcategoryが既にあります" }, 409);
+      }
+    }
+
+    // 2. topic find-or-create
+    const topics = await repo.listTopics(db, categoryId);
+    let topicId: number | undefined = topics.find((x) => x.title === input.topic)?.id;
+    if (topicId === undefined) {
+      try {
+        topicId = await repo.createTopic(db, categoryId, input.topic);
+      } catch {
+        return json({ error: "同名のtopicが既にあります / categoryが存在しません" }, 409);
+      }
+    }
+
+    // 3. quiz 重複チェック (同一topicに同名があれば中断)
+    const existing = await repo.listQuizzes(db, { topicId });
+    if (existing.some((q) => q.title === input.quiz.title)) {
+      return json(
+        { error: "同名のquizが既にあります。既存の編集は管理画面から行ってください" },
+        409,
+      );
+    }
+
+    // 4. quiz作成 + 10問登録
+    let quizId: number;
+    try {
+      quizId = await repo.createQuiz(
+        db,
+        topicId,
+        input.quiz.title,
+        input.quiz.difficulty,
+        input.quiz.status,
+      );
+    } catch {
+      return json({ error: "同名のquizが既にあります / topicが存在しません" }, 409);
+    }
+    try {
+      const count = await repo.replaceQuestions(
+        db,
+        quizId,
+        input.questions.map((q) => ({ ...q, explanation: q.explanation ?? "" })),
+      );
+      return json({ categoryId, topicId, quizId, count }, 201);
+    } catch (e) {
+      // quizだけ作成済みの状態。管理画面から問題を追記できるようidを返す
+      return json({ error: (e as Error).message, quizId, topicId, categoryId }, 400);
+    }
+  }
+
+  {
+    const m = /^\/api\/quizzes\/([^/]+)$/.exec(path);
+    if (m && (method === "PUT" || method === "DELETE")) {
+      const id = parseIdParam(m[1]!);
+      if (id === undefined) return json({ error: "idが不正です" }, 400);
+      if (method === "PUT") {
+        const body = await readJson(req);
+        if ("res" in body) return body.res;
+        const v = validated(quizPatchSchema.safeParse(body.value));
+        if ("res" in v) return v.res;
+        await repo.updateQuiz(db, id, v.data);
+        return json({ ok: true });
+      }
+      if (await repo.quizHasAttempts(db, id)) {
+        return json({ error: HISTORY_LOCK_MESSAGE }, 409);
+      }
+      try {
+        await repo.deleteQuiz(db, id);
+      } catch (e) {
+        if (repo.isForeignKeyError(e)) return json({ error: HISTORY_LOCK_MESSAGE }, 409);
+        throw e;
+      }
+      return json({ ok: true });
+    }
+  }
+
+  // 出題用: 答え・解説は隠す。published以外は出題除外
+  {
+    const m = /^\/api\/quizzes\/([^/]+)\/play$/.exec(path);
+    if (m && method === "GET") {
+      const quizId = parseIdParam(m[1]!);
+      if (quizId === undefined) return json({ error: "quizIdが不正です" }, 400);
+      const quiz = await repo.getQuizWithBreadcrumb(db, quizId);
+      if (!quiz) return json({ error: "quizがありません" }, 404);
+      if ((quiz as { status?: string }).status === "archived") {
+        return json({ error: "このクイズは公開終了のため受験できません" }, 410);
+      }
+      if ((quiz as { status?: string }).status !== "published") {
+        return json({ error: "このクイズはまだ公開されていません" }, 403);
+      }
+      const questions = await repo.listPlayQuestions(db, quizId);
+      if (questions.length !== QUESTIONS_PER_QUIZ) {
+        return json(
+          {
+            error: `このクイズは${QUESTIONS_PER_QUIZ}問揃っていません（現在${questions.length}問）。管理タブで${QUESTIONS_PER_QUIZ}問登録してください。`,
+          },
+          422,
+        );
+      }
+      return json({ quiz, questions: shuffle(questions) });
+    }
+  }
+
+  // ---------- Question (管理: 答え付き) ----------
+  if (path === "/api/questions") {
+    if (method === "GET") {
+      const v = validated(
+        z.object({ quizId: idParamSchema }).safeParse({
+          quizId: url.searchParams.get("quizId") ?? undefined,
+        }),
+      );
+      if ("res" in v) return v.res;
+      return json(await repo.listQuestionsByQuiz(db, v.data.quizId));
+    }
+    if (method === "POST") {
+      const body = await readJson(req);
+      if ("res" in body) return body.res;
+      const v = validated(questionCreateSchema.safeParse(body.value));
+      if ("res" in v) return v.res;
+      const { quizId, ...q } = v.data;
+      const id = await repo.createQuestion(db, quizId, {
+        ...q,
+        explanation: q.explanation ?? "",
+      });
+      return json({ id }, 201);
+    }
+  }
+
+  // 10問保存: versioning方式 (履歴があっても新version発行で保存可。問題数削減のみ履歴ありは不可)
+  if (path === "/api/questions/batch" && method === "POST") {
+    const body = await readJson(req);
+    if ("res" in body) return body.res;
+    const v = validated(questionBatchSchema.safeParse(body.value));
+    if ("res" in v) return v.res;
+    try {
+      const count = await repo.replaceQuestions(
+        db,
+        v.data.quizId,
+        v.data.questions.map((q) => ({ ...q, explanation: q.explanation ?? "" })),
+      );
+      return json({ ok: true, count });
+    } catch (e) {
+      return json({ error: (e as Error).message }, 400);
+    }
+  }
+
+  {
+    const m = /^\/api\/questions\/([^/]+)$/.exec(path);
+    if (m && (method === "PUT" || method === "DELETE")) {
+      const questionId = parseIdParam(m[1]!);
+      if (questionId === undefined) return json({ error: "idが不正です" }, 400);
+      if (method === "PUT") {
+        const body = await readJson(req);
+        if ("res" in body) return body.res;
+        const v = validated(questionSchema.safeParse(body.value));
+        if ("res" in v) return v.res;
+        // versioningのため履歴があっても編集可 (= 新しいversionを発行する)
+        try {
+          await repo.updateQuestion(db, questionId, {
+            ...v.data,
+            explanation: v.data.explanation ?? "",
+          });
+        } catch (e) {
+          return json({ error: (e as Error).message }, 404);
+        }
+        return json({ ok: true });
+      }
+      if (await repo.questionHasAnswers(db, questionId)) {
+        return json({ error: ANSWERED_LOCK_MESSAGE }, 409);
+      }
+      try {
+        await repo.deleteQuestion(db, questionId);
+      } catch (e) {
+        if (repo.isForeignKeyError(e)) return json({ error: ANSWERED_LOCK_MESSAGE }, 409);
+        throw e;
+      }
+      return json({ ok: true });
+    }
+  }
+
+  // ---------- Attempt (解答結果の蓄積: 上書きせず溜めていく) ----------
+
+  // 挑戦開始 (出題スナップショットをattempt_questionsに固定して返す)
+  {
+    const m = /^\/api\/quizzes\/([^/]+)\/attempts$/.exec(path);
+    if (m) {
+      const quizId = parseIdParam(m[1]!);
+      if (quizId === undefined) return json({ error: "quizIdが不正です" }, 400);
+      if (method === "POST") {
+        const quiz = await repo.getQuizWithBreadcrumb(db, quizId);
+        if (!quiz) return json({ error: "quizがありません" }, 404);
+        if ((quiz as { status?: string }).status === "archived") {
+          return json({ error: "このクイズは公開終了のため受験できません" }, 410);
+        }
+        if ((quiz as { status?: string }).status !== "published") {
+          return json({ error: "このクイズはまだ公開されていません" }, 403);
+        }
+        const ready = await repo.countQuestions(db, quizId);
+        if (ready !== QUESTIONS_PER_QUIZ) {
+          return json(
+            {
+              error: `このクイズは${QUESTIONS_PER_QUIZ}問揃っていません（現在${ready}問）。管理タブで${QUESTIONS_PER_QUIZ}問登録してください。`,
+            },
+            422,
+          );
+        }
+        const { attemptId, questions } = await repo.createAttempt(db, quizId);
+        return json({ attemptId, questions }, 201);
+      }
+      if (method === "GET") {
+        // quizの挑戦履歴
+        const v = validated(
+          z.object({ limit: z.coerce.number().int().optional() }).safeParse({
+            limit: url.searchParams.get("limit") ?? undefined,
+          }),
+        );
+        if ("res" in v) return v.res;
+        const rawLimit = v.data.limit ?? 10;
+        const limit = Math.min(Math.max(rawLimit, 1), 50);
+        return json(await repo.listAttemptsByQuiz(db, quizId, limit));
+      }
+    }
+  }
+
+  // 全quizの挑戦サマリー (ツリーのベスト表示用)。
+  // "/api/attempts/:id" より先に評価すること (:id に吸われないように)。
+  if (path === "/api/attempts/summary" && method === "GET") {
+    return json(await repo.listAttemptSummaries(db));
+  }
+
+  // 1問回答 (記録 + 採点)
+  {
+    const m = /^\/api\/attempts\/([^/]+)\/answers$/.exec(path);
+    if (m && method === "POST") {
+      const attemptId = parseIdParam(m[1]!);
+      if (attemptId === undefined) return json({ error: "attemptIdが不正です" }, 400);
+      const body = await readJson(req);
+      if ("res" in body) return body.res;
+      const v = validated(answerBodySchema.safeParse(body.value));
+      if ("res" in v) return v.res;
+      try {
+        return json(
+          await repo.recordAnswer(db, attemptId, v.data.attemptQuestionId, v.data.choice),
+        );
+      } catch (e) {
+        const message = (e as Error).message;
+        if (message === "挑戦がありません" || message === "問題がありません") {
+          return json({ error: message }, 404);
+        }
+        if (message === "この挑戦の問題ではありません") {
+          return json({ error: message }, 422);
+        }
+        return json({ error: message }, 400);
+      }
+    }
+  }
+
+  // 挑戦完了 (スコア確定)
+  {
+    const m = /^\/api\/attempts\/([^/]+)\/complete$/.exec(path);
+    if (m && method === "POST") {
+      const attemptId = parseIdParam(m[1]!);
+      if (attemptId === undefined) return json({ error: "attemptIdが不正です" }, 400);
+      try {
+        return json(await repo.completeAttempt(db, attemptId));
+      } catch (e) {
+        const message = (e as Error).message;
+        return json({ error: message }, message === "挑戦がありません" ? 404 : 400);
+      }
+    }
+  }
+
+  // 挑戦状態の取得 (中断からの再開用。回答済み分の結果のみ含み、未回答の正解は含まない)
+  {
+    const m = /^\/api\/attempts\/([^/]+)$/.exec(path);
+    if (m && method === "GET") {
+      const attemptId = parseIdParam(m[1]!);
+      if (attemptId === undefined) return json({ error: "attemptIdが不正です" }, 400);
+      const state = await repo.getAttemptState(db, attemptId);
+      if (!state) return json({ error: "挑戦がありません" }, 404);
+      return json(state);
+    }
+  }
+
+  // ---------- Tree ----------
+  if (path === "/api/tree" && method === "GET") {
+    return json(await repo.getCategoryTree(db));
+  }
+
+  return json({ error: "見つかりません" }, 404);
+}
+
+export default {
+  // 統一エラーレスポンス: { error: string }。予期せぬ例外は500に丸める。
+  async fetch(req: Request, env: Env): Promise<Response> {
+    const start = Date.now();
+    let res: Response;
+    try {
+      res = await route(req, env);
+    } catch (e) {
+      console.error(e);
+      res = json({ error: "内部エラーが発生しました" }, 500);
+    }
+    // アクセスログ: メソッド・パス・ステータス・所要時間を記録する
+    console.log(
+      `${req.method} ${new URL(req.url).pathname} -> ${res.status} (${Date.now() - start}ms)`,
+    );
+    return res;
   },
-);
-
-// 全quizの挑戦サマリー (ツリーのベスト表示用)
-app.get("/api/attempts/summary", async (c) => {
-  return c.json(await repo.listAttemptSummaries(c.env.DB));
-});
-
-// ---------- Tree ----------
-
-app.get("/api/tree", async (c) => {
-  return c.json(await repo.getCategoryTree(c.env.DB));
-});
-
-export default app;
+};

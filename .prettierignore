@@ -1,0 +1,2 @@
+# 生成物 (src/client から `pnpm build:client` で再生成する)
+src/ui/app.client.js

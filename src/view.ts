@@ -1,7 +1,8 @@
 /**
  * フロントエンドのシェル HTML。
- * スタイルとロジックは src/ui/ 配下 (wrangler の Text モジュールで文字列 import) に分離し、
- * ここでは骨組みだけを持つ。画面の中身はクライアント側でハッシュルーティングして描画する。
+ * React SPA のソースは src/client/ 配下にあり、
+ * `pnpm build:client` で src/ui/app.client.js (生成物) にバンドルされる。
+ * wrangler の Text モジュールで CSS/JS を文字列 import し、ここでは骨組みだけを持つ。
  */
 import styles from "./ui/styles.css";
 import script from "./ui/app.client.js";

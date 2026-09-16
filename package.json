@@ -1,7 +1,7 @@
 {
   "name": "kumon-ikanai-mon",
   "version": "1.0.0",
-  "description": "大分類>中分類>小分類(10問) 4択クイズ - Hono + Cloudflare Workers + D1",
+  "description": "大分類>中分類>小分類(10問) 4択クイズ - React + Cloudflare Workers + D1",
   "keywords": [],
   "homepage": "https://github.com/koya1616/kumon-ikanai-mon#readme",
   "bugs": {
@@ -15,8 +15,10 @@
   },
   "type": "module",
   "scripts": {
-    "dev": "wrangler dev",
-    "deploy": "wrangler deploy",
+    "dev": "pnpm build:client && wrangler dev",
+    "dev:client": "node scripts/build-client.mjs --watch",
+    "build:client": "node scripts/build-client.mjs",
+    "deploy": "pnpm build:client && wrangler deploy",
     "db:migrate:local": "wrangler d1 migrations apply kumon-ikanai-mon-db --local",
     "db:seed:local": "wrangler d1 execute kumon-ikanai-mon-db --local --file=./seed.sql",
     "db:migrate:remote": "wrangler d1 migrations apply kumon-ikanai-mon-db --remote",
@@ -29,13 +31,17 @@
     "format:check": "oxfmt --check"
   },
   "dependencies": {
-    "@hono/zod-validator": "^0.9.1",
-    "hono": "^4.13.8",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "react-router": "^7.18.4",
     "zod": "^4.6.5"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^5.20260915.1",
     "@types/node": "^26.5.1",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "esbuild": "^0.28.2",
     "oxfmt": "^0.68.0",
     "oxlint": "^1.83.0",
     "typescript": "^7.0.2",
