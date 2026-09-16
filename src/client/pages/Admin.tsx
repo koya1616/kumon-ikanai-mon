@@ -168,6 +168,11 @@ export const Admin = () => {
 
   return (
     <div className="screen">
+      <header className="admin-head">
+        <span className="eyebrow">管理画面</span>
+        <h1 className="title-lg">カテゴリ › トピック › クイズを管理</h1>
+        {sel ? <AdminSteps sel={sel} /> : <p className="muted">読み込み中…</p>}
+      </header>
       <div className="admin">
         <aside className="admin-side">{!sel ? <Skeletons n={2} /> : <AdminSide sel={sel} />}</aside>
         <div className="admin-main">
@@ -186,6 +191,80 @@ export const Admin = () => {
         </div>
       </div>
     </div>
+  );
+};
+
+const AdminSteps = ({ sel }: { sel: Selection }) => {
+  const navigate = useNavigate();
+  const cat = sel.categories.find((c) => c.id === sel.catId);
+  const topic = sel.topics.find((t) => t.id === sel.topicId);
+  const quiz = sel.quizzes.find((q) => q.id === sel.quizId);
+  const steps = [
+    {
+      no: "1",
+      label: "カテゴリ",
+      value: cat?.title ?? "未選択",
+      done: sel.catId != null,
+      onClick: undefined as undefined | (() => void),
+    },
+    {
+      no: "2",
+      label: "トピック",
+      value: topic?.title ?? (sel.catId != null ? "未選択" : "—"),
+      done: sel.topicId != null,
+      onClick:
+        sel.catId != null && sel.topicId == null
+          ? undefined
+          : sel.catId != null
+            ? () => navigate(`/admin/c/${sel.catId}`)
+            : undefined,
+    },
+    {
+      no: "3",
+      label: "クイズ・問題",
+      value: quiz?.title ?? (sel.topicId != null ? "未選択" : "—"),
+      done: sel.quizId != null,
+      onClick:
+        sel.topicId != null && sel.quizId == null
+          ? undefined
+          : sel.topicId != null
+            ? () => navigate(`/admin/t/${sel.topicId}`)
+            : undefined,
+    },
+  ];
+  return (
+    <ol className="steps" aria-label="管理の手順">
+      {steps.map((s, i) => (
+        <li
+          key={s.label}
+          className={`step${s.done ? " is-done" : ""}${i === 0 || steps[i - 1]?.done ? " is-next" : ""}`}
+          aria-current={s.done ? undefined : i === 0 || steps[i - 1]?.done ? "step" : undefined}
+        >
+          {s.onClick ? (
+            <button type="button" className="step-btn" onClick={s.onClick}>
+              <span className="step-no">{s.done ? "✓" : s.no}</span>
+              <span className="step-body">
+                <span className="step-label">{s.label}</span>
+                <span className="step-value">{s.value}</span>
+              </span>
+            </button>
+          ) : (
+            <span className="step-btn" aria-hidden={s.onClick == null ? undefined : false}>
+              <span className="step-no">{s.done ? "✓" : s.no}</span>
+              <span className="step-body">
+                <span className="step-label">{s.label}</span>
+                <span className="step-value">{s.value}</span>
+              </span>
+            </span>
+          )}
+          {i < steps.length - 1 && (
+            <span className="step-sep" aria-hidden="true">
+              ›
+            </span>
+          )}
+        </li>
+      ))}
+    </ol>
   );
 };
 
@@ -226,12 +305,12 @@ const AddForm = ({
       />
       <button
         type="button"
-        className="btn btn-icon btn-ink"
-        aria-label="追加"
-        disabled={busy}
+        className="btn btn-ink btn-sm"
+        disabled={busy || !value.trim()}
         onClick={submit}
       >
         <Icon name="plus" />
+        追加
       </button>
     </div>
   );
@@ -243,11 +322,14 @@ const AdminSide = ({ sel }: { sel: Selection }) => {
   const cat = sel.categories.find((c) => c.id === sel.catId);
   return (
     <>
-      <div className="card card-pad">
+      <section className="card card-pad side-card" aria-label="カテゴリ一覧">
         <div className="side-title">
-          <span>カテゴリ</span>
-          <span>{sel.categories.length}件</span>
+          <span>
+            <span className="step-no step-no-sm">1</span> カテゴリ
+          </span>
+          <span className="chip">{sel.categories.length}件</span>
         </div>
+        <p className="muted side-hint">大分類。まずここを選ぶ・作る</p>
         <div className="tree-level" role="list">
           {sel.categories.map((c) => (
             <button
@@ -265,7 +347,7 @@ const AdminSide = ({ sel }: { sel: Selection }) => {
           {!sel.categories.length && <p className="muted">まだありません</p>}
         </div>
         <AddForm
-          placeholder="新しいカテゴリ"
+          placeholder="新しいカテゴリ名を入力"
           onAdd={(title) =>
             api<{ id: number }>("/api/categories", { method: "POST", body: { title } }).then(
               (r) => {
@@ -275,14 +357,17 @@ const AdminSide = ({ sel }: { sel: Selection }) => {
             )
           }
         />
-      </div>
+      </section>
 
       {sel.catId != null && (
-        <div className="card card-pad">
+        <section className="card card-pad side-card" aria-label="トピック一覧">
           <div className="side-title">
-            <span>{(cat?.title ?? "") + " のトピック"}</span>
-            <span>{sel.topics.length}件</span>
+            <span>
+              <span className="step-no step-no-sm">2</span> トピック
+            </span>
+            <span className="chip">{sel.topics.length}件</span>
           </div>
+          <p className="muted side-hint">「{cat?.title ?? ""}」の中分類</p>
           <div className="tree-level" role="list">
             {sel.topics.map((t) => (
               <button
@@ -300,7 +385,7 @@ const AdminSide = ({ sel }: { sel: Selection }) => {
             {!sel.topics.length && <p className="muted">まだありません</p>}
           </div>
           <AddForm
-            placeholder="新しいトピック"
+            placeholder="新しいトピック名を入力"
             onAdd={(title) =>
               api<{ id: number }>("/api/topics", {
                 method: "POST",
@@ -311,7 +396,7 @@ const AdminSide = ({ sel }: { sel: Selection }) => {
               })
             }
           />
-        </div>
+        </section>
       )}
     </>
   );
@@ -319,20 +404,26 @@ const AdminSide = ({ sel }: { sel: Selection }) => {
 
 const EntityHead = ({
   kind,
+  kindLabel,
+  tone,
   title,
   actions,
   extra,
 }: {
   kind: string;
+  kindLabel: string;
+  tone: "cat" | "topic" | "quiz";
   title: string;
-  actions: { label: string; danger?: boolean; fn: () => void }[];
+  actions: { label: string; danger?: boolean; primary?: boolean; fn: () => void }[];
   extra?: React.ReactNode;
 }) => {
   return (
     <header className="entity-head">
       <div className="grow">
-        <span className="eyebrow">{kind}</span>
-        <h1 className="title-lg">{title}</h1>
+        <span className={`eyebrow kind kind-${tone}`}>
+          {kind} · {kindLabel}
+        </span>
+        <h2 className="title-lg">{title}</h2>
         {extra}
       </div>
       <div className="entity-actions">
@@ -340,7 +431,7 @@ const EntityHead = ({
           <button
             key={a.label}
             type="button"
-            className={`btn btn-sm ${a.danger ? "btn-danger" : ""}`}
+            className={`btn btn-sm ${a.danger ? "btn-danger" : a.primary ? "btn-ink" : ""}`}
             onClick={a.fn}
           >
             {a.label}
@@ -436,9 +527,11 @@ const QuizSettingsFields = ({ quiz, setValue }: { quiz: Quiz; setValue: (v: unkn
 
 const QuizCreateCard = ({
   topicId,
+  topicTitle,
   onCreated,
 }: {
   topicId: number;
+  topicTitle: string;
   onCreated: (id: number) => void;
 }) => {
   const toast = useToast();
@@ -464,9 +557,16 @@ const QuizCreateCard = ({
       });
   };
   return (
-    <div className="card card-pad">
-      <div className="side-title">
-        <span>新しいクイズ</span>
+    <section className="card card-pad create-card" aria-label="新しいクイズの作成">
+      <div className="create-head">
+        <span className="create-badge" aria-hidden="true">
+          ＋
+        </span>
+        <div className="grow">
+          <h2 className="title-md">新しいクイズを作成</h2>
+          <p className="muted">「{topicTitle}」に追加します。作成後に10問を登録します。</p>
+        </div>
+        <span className="chip chip-shu">新規作成</span>
       </div>
       <div className="form-grid cols-3">
         <input
@@ -487,11 +587,16 @@ const QuizCreateCard = ({
         <StatusSelect value={status} onChange={setStatus} />
       </div>
       <div className="row mt" style={{ justifyContent: "flex-end" }}>
-        <button type="button" className="btn btn-ink" disabled={busy} onClick={submit}>
-          クイズを作成
+        <button
+          type="button"
+          className="btn btn-primary"
+          disabled={busy || !title.trim()}
+          onClick={submit}
+        >
+          ＋ クイズを作成する
         </button>
       </div>
-    </div>
+    </section>
   );
 };
 
@@ -519,8 +624,8 @@ const QuizRow = ({ q, onEdit }: { q: Quiz; onEdit: (q: Quiz) => void }) => {
         </div>
       </div>
       <div className="entity-actions">
-        <button type="button" className="btn btn-sm btn-ghost" onClick={() => onEdit(q)}>
-          設定
+        <button type="button" className="btn btn-sm" onClick={() => onEdit(q)}>
+          設定を変更
         </button>
         <button
           type="button"
@@ -553,18 +658,7 @@ const AdminMain = ({
   const { invalidate } = useTree();
 
   if (!sel.catId) {
-    return (
-      <>
-        <div className="card">
-          <EmptyState
-            glyph="管"
-            title="管理画面"
-            sub="左のリストからカテゴリを選ぶか、新しく作成してください。カテゴリ › トピック › クイズ (10問) の順に作ります。"
-          />
-        </div>
-        <JsonImportCard />
-      </>
-    );
+    return <JsonImportCard />;
   }
   const cat = sel.categories.find((c) => c.id === sel.catId);
   if (!cat) {
@@ -578,12 +672,16 @@ const AdminMain = ({
   if (!sel.topicId) {
     return (
       <>
+        <Crumbs items={[{ label: "管理", href: "/admin" }, { label: cat.title }]} />
         <EntityHead
-          kind="カテゴリ"
+          kind="STEP 1"
+          kindLabel="カテゴリを編集"
+          tone="cat"
           title={cat.title}
           actions={[
             {
-              label: "名前を変更",
+              label: "名前を編集",
+              primary: true,
               fn: () => onRename("カテゴリ名を変更", cat.title, `/api/categories/${cat.id}`),
             },
             {
@@ -606,7 +704,7 @@ const AdminMain = ({
             sub={
               sel.topics.length
                 ? "左の一覧からトピックを選ぶと、クイズを管理できます。"
-                : "左の「新しいトピック」から追加できます。"
+                : "左の「新しいトピック名を入力」→「追加」で作成できます。"
             }
           />
         </div>
@@ -633,11 +731,14 @@ const AdminMain = ({
           ]}
         />
         <EntityHead
-          kind="トピック"
+          kind="STEP 2"
+          kindLabel="トピックを編集"
+          tone="topic"
           title={topic.title}
           actions={[
             {
-              label: "名前を変更",
+              label: "名前を編集",
+              primary: true,
               fn: () => onRename("トピック名を変更", topic.title, `/api/topics/${topic.id}`),
             },
             {
@@ -655,22 +756,26 @@ const AdminMain = ({
         />
         <QuizCreateCard
           topicId={topic.id}
+          topicTitle={topic.title}
           onCreated={(newId) => {
             invalidate();
             navigate(`/admin/q/${newId}`);
           }}
         />
         <div className="section-head">
-          <h2 className="title-md">クイズ</h2>
-          <span className="muted">{sel.quizzes.length}件</span>
+          <h2 className="title-md">登録済みクイズを編集</h2>
+          <span className="chip">{sel.quizzes.length}件</span>
         </div>
+        <p className="muted" style={{ marginTop: -8 }}>
+          「問題を編集」で10問を登録・更新します。「設定を変更」はタイトル・難易度・公開状態の編集です。
+        </p>
         <div className="admin-quiz-list">
           {!sel.quizzes.length && (
             <div className="card">
               <EmptyState
                 glyph="問"
                 title="クイズがありません"
-                sub="上のフォームから作成してください。"
+                sub="上の「新しいクイズを作成」から作成してください。"
               />
             </div>
           )}
@@ -698,13 +803,16 @@ const AdminMain = ({
           { label: "管理", href: "/admin" },
           { label: cat.title, href: `/admin/c/${cat.id}` },
           { label: topic.title, href: `/admin/t/${topic.id}` },
+          { label: quiz.title },
         ]}
       />
       <EntityHead
-        kind="クイズ"
+        kind="STEP 3"
+        kindLabel="クイズの問題を編集"
+        tone="quiz"
         title={quiz.title}
         actions={[
-          { label: "設定", fn: () => onEditQuiz(quiz) },
+          { label: "設定を変更", primary: true, fn: () => onEditQuiz(quiz) },
           {
             label: "削除",
             danger: true,
