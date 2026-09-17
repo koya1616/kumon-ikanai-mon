@@ -42,7 +42,7 @@ cp data/quizzes/example.json data/quizzes/my-quiz.json
 
 - `questions` はちょうど10問
 - `choice1〜4` はすべて必須、`answer` は1〜4
-- `quiz.status` 省略時は `draft`（いきなり公開しないため）。確認後に公開する
+- `quiz.status` 省略時は `published`（登録後すぐ出題される）。下書きにしたい場合のみ `"draft"` を明示する
 - 同名 `category` / `topic` は再利用される。同名 `quiz` が同じtopicに存在すると中断（誤上書き防止）
 
 ## 2. dry-run で検証する
@@ -82,11 +82,11 @@ quiz作成: id=12 「Golang基礎2」
 questions登録: 10問 (quizId=12)
 ```
 
-## 5. 確認して公開する
+## 5. 確認する（`status: draft` で投入した場合のみ公開作業が必要）
 
 1. `GET https://<本番URL>/api/quizzes/<id>/play` が10問返すことを確認
 2. 管理画面 `https://<本番URL>/#/admin` で目視確認
-3. 問題なければ公開:
+3. `status: draft` で投入した場合のみ公開:
 
 ```bash
 curl -u "xxx:xxx" -X PUT https://<本番URL>/api/quizzes/<id> \

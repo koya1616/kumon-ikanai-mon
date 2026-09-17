@@ -48,7 +48,7 @@ const parseQuizJson = (text: string): ParsedSummary => {
 const SAMPLE = {
   category: "プログラミング",
   topic: "Golang",
-  quiz: { title: "Golang基礎1", difficulty: 1, status: "draft" },
+  quiz: { title: "Golang基礎1", difficulty: 1, status: "published" },
   questions: [
     {
       statement: "問題文",
@@ -68,7 +68,7 @@ export const JsonImportCard = () => {
   const { invalidate } = useTree();
   const [text, setText] = useState("");
   const [msg, setMsg] = useState(
-    "category / topic は同名再利用、quiz重複は中断、status省略時はdraftになります。",
+    "category / topic は同名再利用、quiz重複は中断、status省略時はpublishedになります。",
   );
   const [preview, setPreview] = useState<ParsedSummary | null>(null);
   const [busy, setBusy] = useState(false);
@@ -147,7 +147,7 @@ export const JsonImportCard = () => {
           className="textarea code-input"
           style={{ minHeight: 180 }}
           placeholder={
-            '{\n  "category": "プログラミング",\n  "topic": "Golang",\n  "quiz": { "title": "Golang基礎1", "difficulty": 1, "status": "draft" },\n  "questions": [ { "statement": "...", "choice1": "...", "choice2": "...", "choice3": "...", "choice4": "...", "answer": 1, "explanation": "..." } ]\n} の形式で貼り付け (10問)'
+            '{\n  "category": "プログラミング",\n  "topic": "Golang",\n  "quiz": { "title": "Golang基礎1", "difficulty": 1, "status": "published" },\n  "questions": [ { "statement": "...", "choice1": "...", "choice2": "...", "choice3": "...", "choice4": "...", "answer": 1, "explanation": "..." } ]\n} の形式で貼り付け (10問)'
           }
           aria-label="クイズJSON"
           spellCheck={false}

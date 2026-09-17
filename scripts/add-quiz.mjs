@@ -12,7 +12,7 @@
  * 入力JSON形式 (data/quizzes/example.json 参照):
  *   { category, topic, quiz: { title, difficulty?, status? }, questions: [...] }
  *   - questions はちょうど10問 (QUESTIONS_PER_QUIZ)
- *   - quiz.status 省略時は "draft" (本番いきなり公開を防ぐ)
+ *   - quiz.status 省略時は "published"
  */
 
 import { readFile } from "node:fs/promises";
@@ -72,9 +72,9 @@ function validateInput(raw) {
   if (!Number.isInteger(difficulty) || difficulty < 1 || difficulty > 5) {
     throw new Error("quiz.difficulty は1〜5の整数です");
   }
-  const status = quiz.status ?? "draft";
+  const status = quiz.status ?? "published";
   if (!["draft", "published", "archived"].includes(status)) {
-    throw new Error("quiz.status は draft/published/archived のいずれかです (省略時 draft)");
+    throw new Error("quiz.status は draft/published/archived のいずれかです (省略時 published)");
   }
 
   if (!Array.isArray(questions) || questions.length !== QUESTIONS_PER_QUIZ) {

@@ -157,7 +157,7 @@ export const quizImportSchema = z.object({
   quiz: z.object({
     title: titleSchema,
     difficulty: difficultySchema.default(1),
-    status: quizStatusSchema.default("draft"),
+    status: quizStatusSchema.default("published"),
   }),
   questions: z
     .array(questionSchema, { message: "questionsはちょうど10問必要です" })
