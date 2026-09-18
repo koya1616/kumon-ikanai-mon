@@ -129,7 +129,7 @@ export interface AttemptDetail {
   items: AttemptDetailItem[];
 }
 
-/** 苦手一括復習用の1問 (練習扱い・採点はクライアントで行う) */
+/** 苦手一括復習用の1問 (練習扱い・採点はサーバで行い記録する) */
 export interface MistakeItem {
   questionId: number;
   questionVersionId: number;
@@ -144,6 +144,16 @@ export interface MistakeItem {
   explanation: string;
   mistakeCount: number;
   lastWrongAt: string | null;
+}
+
+/** POST /api/review/answers の返却形 (サーバ採点・連続正解数付き) */
+export interface ReviewAnswerResult {
+  correct: boolean;
+  correctAnswer: number;
+  explanation: string;
+  streak: number;
+  resolved: boolean;
+  remaining: number;
 }
 
 export const fmtDuration = (sec: number | null | undefined): string => {

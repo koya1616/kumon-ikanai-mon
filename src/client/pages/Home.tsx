@@ -171,14 +171,16 @@ export const Home = () => {
                 <Link
                   className="resume-item"
                   to="/review"
-                  aria-label="苦手だけ復習する（練習・記録に残りません）"
+                  aria-label="苦手だけ復習する（練習・成績に残りません）"
                 >
                   <div className="grow">
                     <div style={{ fontWeight: 700 }}>
                       苦手だけ復習
                       {mistakeCount !== null && mistakeCount > 0 && `（${mistakeCount}問）`}
                     </div>
-                    <div className="muted">間違えた問題だけランダム出題 · 練習なので記録に残りません</div>
+                    <div className="muted">
+                      間違えた問題だけランダム出題 · 練習なので成績に残りません
+                    </div>
                   </div>
                   <span className="chip chip-moegi">▶ 復習する</span>
                   <Icon name="arrow" />

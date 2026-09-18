@@ -14,6 +14,8 @@ export const DIFFICULTY_MIN = 1;
 export const DIFFICULTY_MAX = 5;
 export const TITLE_MAX_LENGTH = 100;
 export const CHOICE_COUNT = 4;
+/** 苦手解消に必要な直近の連続正解数 (本番+復習の統合時系列で判定) */
+export const REVIEW_CLEAR_STREAK = 2;
 
 export type QuizStatus = "draft" | "published" | "archived";
 export const QUIZ_STATUSES: QuizStatus[] = ["draft", "published", "archived"];
@@ -176,6 +178,20 @@ export const answerBodySchema = z.object({
     .max(CHOICE_COUNT, { message: `choiceは1-${CHOICE_COUNT}で指定してください` }),
 });
 
+/** 復習回答用 (練習扱い・attempts系に影響しない)。採点はサーバ側で行う */
+export const reviewAnswerBodySchema = z.object({
+  questionVersionId: z.coerce
+    .number()
+    .int()
+    .positive({ message: "questionVersionIdとchoiceが必要です" }),
+  choice: z.coerce
+    .number()
+    .int()
+    .min(1, { message: "questionVersionIdとchoiceが必要です" })
+    .max(CHOICE_COUNT, { message: `choiceは1-${CHOICE_COUNT}で指定してください` }),
+  sessionId: z.string().trim().min(1).max(64).optional(),
+});
+
 export function assertCategoryTitle(title: unknown): asserts title is string {
   if (typeof title !== "string" || !title.trim() || title.trim().length > TITLE_MAX_LENGTH) {
     throw new Error(`titleは1〜${TITLE_MAX_LENGTH}文字で入力してください`);
@@ -270,4 +286,17 @@ export interface AttemptSummary {
   bestScore: number;
   bestTotal: number;
   lastCompletedAt: string | null;
+}
+
+/** POST /api/review/answers の返却形 */
+export interface ReviewAnswerResult {
+  correct: boolean;
+  correctAnswer: number;
+  explanation: string;
+  /** 直近の連続正解数 (今回を含む。本番+復習の統合時系列) */
+  streak: number;
+  /** streak >= REVIEW_CLEAR_STREAK か */
+  resolved: boolean;
+  /** 解消までの残り正解数 */
+  remaining: number;
 }

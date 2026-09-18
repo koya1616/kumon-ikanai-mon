@@ -8,9 +8,10 @@ import type {
   Question,
   Quiz,
   QuizStatus,
+  ReviewAnswerResult,
   Topic,
 } from "./domain";
-import { QUESTIONS_PER_QUIZ } from "./domain";
+import { QUESTIONS_PER_QUIZ, REVIEW_CLEAR_STREAK } from "./domain";
 
 /**
  * D1 アクセス層: SQL (snake_case) とドメイン (camelCase) の変換はここに集約。
@@ -888,7 +889,7 @@ export async function listAttemptSummaries(db: DB): Promise<AttemptSummary[]> {
   return results;
 }
 
-// ---------- Review (苦手一括復習: 練習扱い・読み取りのみ) ----------
+// ---------- Review (苦手一括復習: 練習扱い・attempts系と完全分離) ----------
 
 export interface MistakeItem {
   questionId: number;
@@ -906,32 +907,128 @@ export interface MistakeItem {
   lastWrongAt: string | null;
 }
 
+/** 復習回答が参照しているか (コンテンツ削除ガード用。attempts系とは別建て) */
+export async function questionHasReviewAnswers(db: DB, questionId: number): Promise<boolean> {
+  const row = await db
+    .prepare("SELECT 1 AS one FROM review_answers WHERE question_id = ? LIMIT 1")
+    .bind(questionId)
+    .first();
+  return row !== null;
+}
+
 /**
- * 苦手集計: question_id単位で「最後の正誤」が不正解のものだけ残す。
- * - wrong側: correct=0 の件数・最終日時
- * - correct側: correct=1 の最終日時 (wrongより後なら解消扱いで除外)
+ * 復習の1問分を記録し、サーバ側で採点する (クライアントの答えは信用しない)。
+ * attempts系には一切書き込まない。履歴・ベスト・サマリーに影響しない。
+ * streak は本番+復習の統合時系列 (unified_answer_history) での直近連続正解数。
+ */
+export async function createReviewAnswer(
+  db: DB,
+  input: { questionVersionId: number; choice: number; sessionId?: string | undefined },
+): Promise<ReviewAnswerResult> {
+  const version = await db
+    .prepare(
+      `SELECT v.id AS "versionId", v.question_id AS "questionId", v.explanation AS "explanation",
+        q.quiz_id AS "quizId"
+       FROM question_versions v JOIN questions q ON q.id = v.question_id
+       WHERE v.id = ?`,
+    )
+    .bind(input.questionVersionId)
+    .first<{ versionId: number; questionId: number; explanation: string | null; quizId: number }>();
+  if (!version) throw new Error("問題がありません");
+  const { results: choices } = await db
+    .prepare(
+      "SELECT position, choice_text AS text, is_correct AS isCorrect FROM question_choices WHERE question_version_id = ? ORDER BY position",
+    )
+    .bind(input.questionVersionId)
+    .all<{ position: number; text: string; isCorrect: number }>();
+  if (!choices.length) throw new Error("問題がありません");
+  const picked = choices.find((c) => c.position === input.choice);
+  if (!picked) throw new Error("選択肢がありません");
+  const correctAnswer = choices.find((c) => c.isCorrect === 1)?.position ?? 0;
+  const correct = input.choice === correctAnswer ? 1 : 0;
+  await db
+    .prepare(
+      `INSERT INTO review_answers
+        (session_id, question_id, question_version_id, quiz_id, choice_position, choice_text_snapshot, correct)
+       VALUES (?,?,?,?,?,?,?)`,
+    )
+    .bind(
+      input.sessionId ?? null,
+      version.questionId,
+      input.questionVersionId,
+      version.quizId,
+      input.choice,
+      picked.text,
+      correct,
+    )
+    .run();
+  // 直近N件を取得し、先頭からの連続正解を数える
+  const { results: recent } = await db
+    .prepare(
+      `SELECT correct FROM unified_answer_history
+       WHERE question_id = ? ORDER BY created_at DESC, seq DESC LIMIT ?`,
+    )
+    .bind(version.questionId, REVIEW_CLEAR_STREAK)
+    .all<{ correct: number }>();
+  let streak = 0;
+  for (const r of recent) {
+    if (Number(r.correct) === 1) streak++;
+    else break;
+  }
+  return {
+    correct: correct === 1,
+    correctAnswer,
+    explanation: version.explanation ?? "",
+    streak,
+    resolved: streak >= REVIEW_CLEAR_STREAK,
+    remaining: Math.max(0, REVIEW_CLEAR_STREAK - streak),
+  };
+}
+
+/**
+ * 苦手集計: question_id単位で、直近REVIEW_CLEAR_STREAK件がすべて正解なら解消扱いで除外する。
+ * - mistakeCount / lastWrongAt: 本番+復習を通算 (unified_answer_history)
+ * - 解消判定: ROW_NUMBERで直近N件を切り出し、全正解なら除外
  * 出題は current_version の最新スナップショットで行う (版ズレを踏まない)。
  * published のクイズのみ対象。
  */
 export async function listMistakes(
   db: DB,
-  filter: { quizId?: number | undefined; categoryId?: number | undefined; limit?: number | undefined },
+  filter: {
+    quizId?: number | undefined;
+    categoryId?: number | undefined;
+    limit?: number | undefined;
+  },
 ): Promise<MistakeItem[]> {
   const limit = Math.min(Math.max(filter.limit ?? 30, 1), 100);
+  const streak = REVIEW_CLEAR_STREAK;
   const conds: string[] = ["qz.status = 'published'"];
-  const params: unknown[] = [];
+  const filterParams: unknown[] = [];
   if (filter.quizId !== undefined) {
     conds.push("qz.id = ?");
-    params.push(filter.quizId);
+    filterParams.push(filter.quizId);
   }
   if (filter.categoryId !== undefined) {
     conds.push("c.id = ?");
-    params.push(filter.categoryId);
+    filterParams.push(filter.categoryId);
   }
   const where = conds.length ? `WHERE ${conds.join(" AND ")}` : "";
   const { results: rows } = await db
     .prepare(
-      `SELECT q.id AS "questionId",
+      `WITH ranked AS (
+         SELECT question_id AS "qid", correct, created_at,
+           ROW_NUMBER() OVER (PARTITION BY question_id ORDER BY created_at DESC, seq DESC) AS "rn"
+         FROM unified_answer_history
+       ),
+       agg AS (
+         SELECT "qid",
+           SUM(CASE WHEN correct = 0 THEN 1 ELSE 0 END) AS "mistakeCount",
+           MAX(CASE WHEN correct = 0 THEN created_at ELSE NULL END) AS "lastWrongAt",
+           SUM(CASE WHEN "rn" <= ? AND correct = 1 THEN 1 ELSE 0 END) AS "recentCorrectCount",
+           SUM(CASE WHEN "rn" <= ? THEN 1 ELSE 0 END) AS "recentCount"
+         FROM ranked GROUP BY "qid"
+       )
+       SELECT q.id AS "questionId",
         q.current_version_id AS "questionVersionId",
         qz.id AS "quizId", qz.title AS "quizTitle",
         t.title AS "topicTitle",
@@ -939,27 +1036,18 @@ export async function listMistakes(
         cv.statement AS "statement", cv.explanation AS "explanation",
         agg."mistakeCount", agg."lastWrongAt"
        FROM questions q
-       JOIN (
-         SELECT v.question_id AS "qid",
-           SUM(CASE WHEN aa.correct = 0 THEN 1 ELSE 0 END) AS "mistakeCount",
-           MAX(CASE WHEN aa.correct = 0 THEN aa.created_at ELSE NULL END) AS "lastWrongAt",
-           MAX(CASE WHEN aa.correct = 1 THEN aa.created_at ELSE NULL END) AS "lastCorrectAt"
-         FROM attempt_answers aa
-         JOIN attempt_questions aq ON aq.id = aa.attempt_question_id
-         JOIN question_versions v ON v.id = aq.question_version_id
-         GROUP BY v.question_id
-       ) agg ON agg."qid" = q.id
+       JOIN agg ON agg."qid" = q.id
        JOIN quizzes qz ON qz.id = q.quiz_id
        JOIN topics t ON t.id = qz.topic_id
        JOIN categories c ON c.id = t.category_id
        JOIN question_versions cv ON cv.id = q.current_version_id
        ${where}
          AND agg."mistakeCount" > 0
-         AND (agg."lastCorrectAt" IS NULL OR agg."lastCorrectAt" < agg."lastWrongAt")
+         AND NOT (agg."recentCount" = ? AND agg."recentCorrectCount" = ?)
        ORDER BY agg."lastWrongAt" DESC
        LIMIT ?`,
     )
-    .bind(...params, limit)
+    .bind(streak, streak, ...filterParams, streak, streak, limit)
     .all<{
       questionId: number;
       questionVersionId: number;

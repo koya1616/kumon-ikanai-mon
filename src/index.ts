@@ -11,6 +11,7 @@ import {
   quizBodySchema,
   quizImportSchema,
   quizPatchSchema,
+  reviewAnswerBodySchema,
   topicBodySchema,
   topicPatchSchema,
   categoryBodySchema,
@@ -480,7 +481,10 @@ async function route(req: Request, env: Env): Promise<Response> {
         }
         return json({ ok: true });
       }
-      if (await repo.questionHasAnswers(db, questionId)) {
+      if (
+        (await repo.questionHasAnswers(db, questionId)) ||
+        (await repo.questionHasReviewAnswers(db, questionId))
+      ) {
         return json({ error: ANSWERED_LOCK_MESSAGE }, 409);
       }
       try {
@@ -543,8 +547,8 @@ async function route(req: Request, env: Env): Promise<Response> {
     return json(await repo.listAttemptSummaries(db));
   }
 
-  // 苦手一括復習 (練習扱い・読み取りのみ。履歴・スコアに影響しない)。
-  // question_id単位で「最後の正誤」が不正解のものを新しい順に返す。
+  // 苦手一括復習 (練習扱い・attempts系と完全分離。ベスト・サマリーに影響しない)。
+  // GET: 直近REVIEW_CLEAR_STREAK件が全正解のものは解消扱いで除外して返す。
   if (path === "/api/review/mistakes" && method === "GET") {
     const v = validated(
       z
@@ -566,6 +570,21 @@ async function route(req: Request, env: Env): Promise<Response> {
     );
     if ("res" in v) return v.res;
     return json({ items: await repo.listMistakes(db, v.data) });
+  }
+
+  // 復習回答の記録 (練習扱い・サーバ側で採点。attempts系に影響しない)。
+  if (path === "/api/review/answers" && method === "POST") {
+    const body = await readJson(req);
+    if ("res" in body) return body.res;
+    const v = validated(reviewAnswerBodySchema.safeParse(body.value));
+    if ("res" in v) return v.res;
+    try {
+      return json(await repo.createReviewAnswer(db, v.data), 201);
+    } catch (e) {
+      const message = (e as Error).message;
+      if (message === "問題がありません") return json({ error: message }, 404);
+      return json({ error: message }, 400);
+    }
   }
 
   // 1問回答 (記録 + 採点)

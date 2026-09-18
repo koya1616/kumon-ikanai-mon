@@ -1,9 +1,10 @@
 // 苦手一括復習ページ (#/review)。練習扱いのため attempt は作らず、
-// GET /api/review/mistakes の結果をクライアントで採点する。履歴・スコアに影響しない。
+// POST /api/review/answers で1回答ずつ記録する。attempts系の履歴・スコアには影響しない。
+// 直近REVIEW_CLEAR_STREAK連続正解で苦手解消となる。
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router";
 import { api } from "../api";
-import type { MistakeItem } from "../api";
+import type { MistakeItem, ReviewAnswerResult } from "../api";
 import { RichText } from "../rich";
 import { shuffle } from "../resume";
 import { Crumbs, EmptyState, Skeletons } from "../ui";
@@ -22,6 +23,13 @@ export const Review = () => {
   const [pos, setPos] = useState(0);
   const [picks, setPicks] = useState<Record<number, number>>({});
   const [expCollapsed, setExpCollapsed] = useState(false);
+  // 1周回を束ねるID (集計用予約。サーバ側はNULL可だが常に送る)
+  const [sessionId] = useState(() =>
+    typeof crypto !== "undefined" && "randomUUID" in crypto
+      ? crypto.randomUUID()
+      : `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+  );
+  const [serverInfo, setServerInfo] = useState<Record<number, ReviewAnswerResult>>({});
 
   useEffect(() => {
     let alive = true;
@@ -47,6 +55,7 @@ export const Review = () => {
     setOrder(shuffle(state.items));
     setPos(0);
     setPicks({});
+    setServerInfo({});
     setExpCollapsed(false);
     window.scrollTo(0, 0);
   }, [state]);
@@ -71,9 +80,20 @@ export const Review = () => {
   const pick = useCallback(
     (n: number) => {
       if (!target || revealed) return;
+      // 即時反映し、記録はバックグラウンドで送る (失敗しても復習を止めない)
       setPicks((p) => ({ ...p, [target.questionVersionId]: n }));
+      void api<ReviewAnswerResult>("/api/review/answers", {
+        method: "POST",
+        body: { questionVersionId: target.questionVersionId, choice: n, sessionId },
+      })
+        .then((r) => {
+          setServerInfo((s) => ({ ...s, [target.questionVersionId]: r }));
+        })
+        .catch(() => {
+          /* 記録失敗は無視する */
+        });
     },
-    [target, revealed],
+    [target, revealed, sessionId],
   );
 
   const next = useCallback(() => {
@@ -151,7 +171,7 @@ export const Review = () => {
           <div className="hist-band-inner">
             <Crumbs items={[{ label: "ホーム", href: "/" }, { label: "苦手だけ復習" }]} />
             <h1 className="title-lg">苦手だけ復習</h1>
-            <p className="muted">練習モード · 記録には残りません</p>
+            <p className="muted">練習モード · 成績には残りません</p>
           </div>
         </div>
         <div className="hist-body">
@@ -159,7 +179,7 @@ export const Review = () => {
             <EmptyState
               glyph="◎"
               title="苦手はありません"
-              sub="間違えた問題があると、ここに溜まっていきます。後から正解し直すとリストから消えます。"
+              sub="間違えた問題があると、ここに溜まっていきます。2回連続で正解するとリストから消えます。"
             />
           </div>
           <div className="row mt" style={{ justifyContent: "center" }}>
@@ -183,7 +203,7 @@ export const Review = () => {
             <Crumbs items={[{ label: "ホーム", href: "/" }, { label: "苦手だけ復習" }]} />
             <h1 className="title-lg">復習おわり</h1>
             <p className="muted">
-              {order.length}問中 {correctCount}問正解（正答率 {pct}%）· 記録には残っていません
+              {order.length}問中 {correctCount}問正解（正答率 {pct}%）· 成績には残っていません
             </p>
           </div>
         </div>
@@ -193,9 +213,10 @@ export const Review = () => {
               <strong>
                 {correctCount}/{order.length} 正解
               </strong>
-              　{correctCount === order.length
+              　
+              {correctCount === order.length
                 ? "全問正解！この調子で進もう。"
-                : "間違えた問題は、次にクイズで正解するとリストから消えます。"}
+                : "2回連続で正解した問題は、次回の苦手リストから消えます。"}
             </p>
             <div className="row mt">
               <button
@@ -222,7 +243,7 @@ export const Review = () => {
     <div className="screen">
       <div className="play">
         <div className="play-top">
-          <span className="chip chip-shu">練習中 · 記録に残りません</span>
+          <span className="chip chip-shu">練習中 · 復習記録に残ります</span>
           <div className="play-dots" aria-hidden="true">
             {order.map((o, i) => {
               const p = picks[o.questionVersionId];
@@ -254,11 +275,7 @@ export const Review = () => {
           <div className="drill-card">
             <div className="section-head">
               <h1 className="title-md">苦手だけ復習 · 残り{remaining}問</h1>
-              <button
-                type="button"
-                className="btn btn-sm btn-ghost"
-                onClick={() => navigate("/")}
-              >
+              <button type="button" className="btn btn-sm btn-ghost" onClick={() => navigate("/")}>
                 終わる
               </button>
             </div>
@@ -315,6 +332,13 @@ export const Review = () => {
                 <span>{isOk ? "正解！よく直せたね" : `不正解… 正解は ${target.answer} 番`}</span>
                 <span className="sheet-score">
                   現在 {correctCount} / {doneCount} 正解
+                  {(() => {
+                    const info = serverInfo[target.questionVersionId];
+                    if (!info) return null;
+                    if (info.resolved) return " · 苦手解消！";
+                    if (info.correct) return ` · あと${info.remaining}回で解消`;
+                    return null;
+                  })()}
                 </span>
                 <button
                   type="button"
