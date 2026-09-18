@@ -23,7 +23,7 @@ cp data/quizzes/example.json data/quizzes/my-quiz.json
 {
   "category": "プログラミング",
   "topic": "TypeScript",
-  "quiz": { "title": "TypeScript基礎1", "difficulty": 2, "status": "draft" },
+  "quiz": { "title": "TypeScript基礎1", "difficulty": 2, "status": "published" },
   "questions": [
     {
       "statement": "...",
