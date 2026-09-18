@@ -8,6 +8,7 @@ import { Category } from "./pages/Category";
 import { Play } from "./pages/Play";
 import { Result } from "./pages/Result";
 import { History } from "./pages/History";
+import { Review } from "./pages/Review";
 import { Admin } from "./pages/Admin";
 
 /** シェル (view.ts の header/tabbar) と body[data-mode] の同期 + スクロール復帰。 */
@@ -48,6 +49,7 @@ export const App = () => {
               <Route path="/play/:id" element={<Play />} />
               <Route path="/result" element={<Result />} />
               <Route path="/h/:id" element={<History />} />
+              <Route path="/review" element={<Review />} />
               <Route path="/admin" element={<Admin key="admin" />} />
               <Route path="/admin/c/:id" element={<Admin key="admin-c" />} />
               <Route path="/admin/t/:id" element={<Admin key="admin-t" />} />

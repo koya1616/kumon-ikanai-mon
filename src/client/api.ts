@@ -129,6 +129,23 @@ export interface AttemptDetail {
   items: AttemptDetailItem[];
 }
 
+/** 苦手一括復習用の1問 (練習扱い・採点はクライアントで行う) */
+export interface MistakeItem {
+  questionId: number;
+  questionVersionId: number;
+  quizId: number;
+  quizTitle: string;
+  topicTitle: string;
+  categoryId: number;
+  categoryTitle: string;
+  statement: string;
+  choices: string[];
+  answer: number;
+  explanation: string;
+  mistakeCount: number;
+  lastWrongAt: string | null;
+}
+
 export const fmtDuration = (sec: number | null | undefined): string => {
   if (sec === null || sec === undefined) return "";
   if (sec < 60) return `${sec}秒`;

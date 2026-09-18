@@ -17,6 +17,7 @@ export const Home = () => {
   const { loadTree, summary, findQuiz } = useTree();
   const [tree, setTree] = useState<CategoryTreeNode[] | null>(null);
   const [inProgress, setInProgress] = useState<InProgress[] | null>(null);
+  const [mistakeCount, setMistakeCount] = useState<number | null>(null);
 
   useEffect(() => {
     let alive = true;
@@ -28,6 +29,20 @@ export const Home = () => {
     };
   }, [loadTree]);
 
+  // 苦手件数: 練習モードへの導線用。失敗しても導線自体は隠さない。
+  useEffect(() => {
+    let alive = true;
+    api<{ items: unknown[] }>(`/api/review/mistakes?limit=30`)
+      .then((d) => {
+        if (alive) setMistakeCount((d.items ?? []).length);
+      })
+      .catch(() => {
+        if (alive) setMistakeCount(null);
+      });
+    return () => {
+      alive = false;
+    };
+  }, []);
   // 回答途中のクイズ: このブラウザの localStorage (kmon:resume:*) を列挙し、
   // サーバ状態で未完了かつ 1問以上回答ずみ・全問未満のものだけ残す。
   // Play の再開判定 (answers 0件は新規扱い) と合わせる。
@@ -151,6 +166,25 @@ export const Home = () => {
           </>
         ) : (
           <>
+            {(mistakeCount === null || mistakeCount > 0) && (
+              <section aria-label="苦手復習">
+                <Link
+                  className="resume-item"
+                  to="/review"
+                  aria-label="苦手だけ復習する（練習・記録に残りません）"
+                >
+                  <div className="grow">
+                    <div style={{ fontWeight: 700 }}>
+                      苦手だけ復習
+                      {mistakeCount !== null && mistakeCount > 0 && `（${mistakeCount}問）`}
+                    </div>
+                    <div className="muted">間違えた問題だけランダム出題 · 練習なので記録に残りません</div>
+                  </div>
+                  <span className="chip chip-moegi">▶ 復習する</span>
+                  <Icon name="arrow" />
+                </Link>
+              </section>
+            )}
             {resumable.length > 0 && (
               <section aria-label="回答途中">
                 <div className="section-head">

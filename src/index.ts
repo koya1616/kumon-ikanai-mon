@@ -543,6 +543,31 @@ async function route(req: Request, env: Env): Promise<Response> {
     return json(await repo.listAttemptSummaries(db));
   }
 
+  // 苦手一括復習 (練習扱い・読み取りのみ。履歴・スコアに影響しない)。
+  // question_id単位で「最後の正誤」が不正解のものを新しい順に返す。
+  if (path === "/api/review/mistakes" && method === "GET") {
+    const v = validated(
+      z
+        .object({
+          quizId: idParamSchema.optional(),
+          categoryId: idParamSchema.optional(),
+          limit: z.coerce
+            .number()
+            .int()
+            .min(1, { message: "limitは1-100で指定してください" })
+            .max(100, { message: "limitは1-100で指定してください" })
+            .optional(),
+        })
+        .safeParse({
+          quizId: url.searchParams.get("quizId") ?? undefined,
+          categoryId: url.searchParams.get("categoryId") ?? undefined,
+          limit: url.searchParams.get("limit") ?? undefined,
+        }),
+    );
+    if ("res" in v) return v.res;
+    return json({ items: await repo.listMistakes(db, v.data) });
+  }
+
   // 1問回答 (記録 + 採点)
   {
     const m = /^\/api\/attempts\/([^/]+)\/answers$/.exec(path);

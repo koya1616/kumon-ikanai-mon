@@ -887,3 +887,128 @@ export async function listAttemptSummaries(db: DB): Promise<AttemptSummary[]> {
     .all<AttemptSummary>();
   return results;
 }
+
+// ---------- Review (苦手一括復習: 練習扱い・読み取りのみ) ----------
+
+export interface MistakeItem {
+  questionId: number;
+  questionVersionId: number;
+  quizId: number;
+  quizTitle: string;
+  topicTitle: string;
+  categoryId: number;
+  categoryTitle: string;
+  statement: string;
+  choices: string[];
+  answer: number;
+  explanation: string;
+  mistakeCount: number;
+  lastWrongAt: string | null;
+}
+
+/**
+ * 苦手集計: question_id単位で「最後の正誤」が不正解のものだけ残す。
+ * - wrong側: correct=0 の件数・最終日時
+ * - correct側: correct=1 の最終日時 (wrongより後なら解消扱いで除外)
+ * 出題は current_version の最新スナップショットで行う (版ズレを踏まない)。
+ * published のクイズのみ対象。
+ */
+export async function listMistakes(
+  db: DB,
+  filter: { quizId?: number | undefined; categoryId?: number | undefined; limit?: number | undefined },
+): Promise<MistakeItem[]> {
+  const limit = Math.min(Math.max(filter.limit ?? 30, 1), 100);
+  const conds: string[] = ["qz.status = 'published'"];
+  const params: unknown[] = [];
+  if (filter.quizId !== undefined) {
+    conds.push("qz.id = ?");
+    params.push(filter.quizId);
+  }
+  if (filter.categoryId !== undefined) {
+    conds.push("c.id = ?");
+    params.push(filter.categoryId);
+  }
+  const where = conds.length ? `WHERE ${conds.join(" AND ")}` : "";
+  const { results: rows } = await db
+    .prepare(
+      `SELECT q.id AS "questionId",
+        q.current_version_id AS "questionVersionId",
+        qz.id AS "quizId", qz.title AS "quizTitle",
+        t.title AS "topicTitle",
+        c.id AS "categoryId", c.title AS "categoryTitle",
+        cv.statement AS "statement", cv.explanation AS "explanation",
+        agg."mistakeCount", agg."lastWrongAt"
+       FROM questions q
+       JOIN (
+         SELECT v.question_id AS "qid",
+           SUM(CASE WHEN aa.correct = 0 THEN 1 ELSE 0 END) AS "mistakeCount",
+           MAX(CASE WHEN aa.correct = 0 THEN aa.created_at ELSE NULL END) AS "lastWrongAt",
+           MAX(CASE WHEN aa.correct = 1 THEN aa.created_at ELSE NULL END) AS "lastCorrectAt"
+         FROM attempt_answers aa
+         JOIN attempt_questions aq ON aq.id = aa.attempt_question_id
+         JOIN question_versions v ON v.id = aq.question_version_id
+         GROUP BY v.question_id
+       ) agg ON agg."qid" = q.id
+       JOIN quizzes qz ON qz.id = q.quiz_id
+       JOIN topics t ON t.id = qz.topic_id
+       JOIN categories c ON c.id = t.category_id
+       JOIN question_versions cv ON cv.id = q.current_version_id
+       ${where}
+         AND agg."mistakeCount" > 0
+         AND (agg."lastCorrectAt" IS NULL OR agg."lastCorrectAt" < agg."lastWrongAt")
+       ORDER BY agg."lastWrongAt" DESC
+       LIMIT ?`,
+    )
+    .bind(...params, limit)
+    .all<{
+      questionId: number;
+      questionVersionId: number;
+      quizId: number;
+      quizTitle: string;
+      topicTitle: string;
+      categoryId: number;
+      categoryTitle: string;
+      statement: string;
+      explanation: string | null;
+      mistakeCount: number;
+      lastWrongAt: string | null;
+    }>();
+  if (!rows.length) return [];
+  const ids = rows.map((r) => r.questionVersionId);
+  const placeholders = ids.map(() => "?").join(",");
+  const { results: choiceRows } = await db
+    .prepare(
+      `SELECT question_version_id AS "versionId", position, choice_text AS "text", is_correct AS "isCorrect"
+       FROM question_choices WHERE question_version_id IN (${placeholders}) ORDER BY question_version_id, position`,
+    )
+    .bind(...ids)
+    .all<{ versionId: number; position: number; text: string; isCorrect: number }>();
+  const byVersion = new Map<number, { choices: string[]; answer: number }>();
+  for (const ch of choiceRows) {
+    let entry = byVersion.get(ch.versionId);
+    if (!entry) {
+      entry = { choices: [], answer: 1 };
+      byVersion.set(ch.versionId, entry);
+    }
+    entry.choices[ch.position - 1] = ch.text;
+    if (ch.isCorrect === 1) entry.answer = ch.position;
+  }
+  return rows.map((r) => {
+    const e = byVersion.get(r.questionVersionId) ?? { choices: [], answer: 1 };
+    return {
+      questionId: Number(r.questionId),
+      questionVersionId: Number(r.questionVersionId),
+      quizId: Number(r.quizId),
+      quizTitle: r.quizTitle,
+      topicTitle: r.topicTitle,
+      categoryId: Number(r.categoryId),
+      categoryTitle: r.categoryTitle,
+      statement: r.statement,
+      choices: e.choices,
+      answer: e.answer,
+      explanation: r.explanation ?? "",
+      mistakeCount: Number(r.mistakeCount),
+      lastWrongAt: r.lastWrongAt,
+    };
+  });
+}
