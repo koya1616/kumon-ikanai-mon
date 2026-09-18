@@ -8,20 +8,40 @@ import { Category } from "./pages/Category";
 import { Play } from "./pages/Play";
 import { Result } from "./pages/Result";
 import { History } from "./pages/History";
+import { HistoryAll } from "./pages/HistoryAll";
 import { Review } from "./pages/Review";
 import { Bookmarks } from "./pages/Bookmarks";
 import { Admin } from "./pages/Admin";
 
-/** シェル (view.ts の header/tabbar) と body[data-mode] の同期 + スクロール復帰。 */
+/** シェル (view.ts の header/side/tabbar) と body[data-mode] の同期 + スクロール復帰。 */
 const ShellSync = () => {
   const location = useLocation();
   useEffect(() => {
-    const isAdmin = location.pathname.startsWith("/admin");
-    for (const id of ["nav-home", "nav-admin", "tab-home", "tab-admin"]) {
+    const p = location.pathname;
+    const section = p.startsWith("/admin")
+      ? "admin"
+      : p.startsWith("/review")
+        ? "review"
+        : p.startsWith("/bookmarks")
+          ? "bookmarks"
+          : p.startsWith("/history") || p.startsWith("/h/")
+            ? "history"
+            : "home";
+    for (const id of [
+      "nav-home",
+      "nav-admin",
+      "tab-home",
+      "tab-admin",
+      "side-home",
+      "side-history",
+      "side-review",
+      "side-bookmarks",
+      "side-admin",
+    ]) {
       const el = document.getElementById(id);
       if (!el) continue;
       const nav = el.dataset.nav;
-      if ((isAdmin && nav === "admin") || (!isAdmin && nav === "home")) {
+      if (nav === section) {
         el.setAttribute("aria-current", "page");
       } else {
         el.removeAttribute("aria-current");
@@ -56,6 +76,7 @@ export const App = () => {
               <Route path="/play/:id" element={<Play />} />
               <Route path="/result" element={<Result />} />
               <Route path="/h/:id" element={<History />} />
+              <Route path="/history" element={<HistoryAll />} />
               <Route path="/review" element={<Review />} />
               <Route path="/bookmarks" element={<Bookmarks />} />
               <Route path="/admin" element={<Admin key="admin" />} />

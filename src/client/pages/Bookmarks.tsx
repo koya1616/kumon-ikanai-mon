@@ -6,7 +6,7 @@ import { Link, useNavigate } from "react-router";
 import { api } from "../api";
 import type { BookmarkItem } from "../api";
 import { RichText } from "../rich";
-import { Crumbs, EmptyState, Icon, Skeletons } from "../ui";
+import { EmptyState, Icon, Skeletons } from "../ui";
 
 type LoadState =
   | { name: "loading" }
@@ -75,16 +75,6 @@ export const Bookmarks = () => {
 
   return (
     <div className="screen">
-      <div className="bm-band">
-        <div className="bm-band-inner">
-          <Crumbs items={[{ label: "ホーム", href: "/" }, { label: "ブックマーク" }]} />
-          <h1 className="title-lg">ブックマーク</h1>
-          <p className="muted">
-            保存した問題で自習する · 答えを隠して解ける ·{total > 0 ? ` ${total}問保存中` : ""}
-          </p>
-        </div>
-      </div>
-
       {state.name === "ready" && total > 0 && (
         <div className="bm-toolbar" role="search">
           <div className="search">

@@ -32,7 +32,18 @@ export const html: string =
   '      <a id="nav-admin" class="nav-link" href="#/admin">管理</a>\n' +
   "    </nav>\n" +
   "  </header>\n" +
-  '  <main id="main" class="main" aria-live="polite"></main>\n' +
+  '  <div class="shell">\n' +
+  '    <aside class="side" aria-label="サイド">\n' +
+  '      <nav class="side-nav" aria-label="サイド">\n' +
+  '        <a id="side-home" class="side-link" href="#/">ホーム</a>\n' +
+  '        <a id="side-history" class="side-link" href="#/history">履歴</a>\n' +
+  '        <a id="side-review" class="side-link" href="#/review">苦手復習</a>\n' +
+  '        <a id="side-bookmarks" class="side-link" href="#/bookmarks">ブックマーク</a>\n' +
+  '        <a id="side-admin" class="side-link" href="#/admin">管理</a>\n' +
+  "      </nav>\n" +
+  "    </aside>\n" +
+  '    <main id="main" class="main" aria-live="polite"></main>\n' +
+  "  </div>\n" +
   '  <nav class="tabbar" aria-label="メイン (モバイル)">\n' +
   '    <a id="tab-home" class="tab-link" href="#/">ホーム</a>\n' +
   '    <a id="tab-admin" class="tab-link" href="#/admin">管理</a>\n' +

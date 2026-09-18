@@ -542,10 +542,34 @@ async function route(req: Request, env: Env): Promise<Response> {
     }
   }
 
+  // quizの問題別集計 (履歴ページ用: 問題ごとの正誤時系列)
+  {
+    const m = /^\/api\/quizzes\/([^/]+)\/insights$/.exec(path);
+    if (m && method === "GET") {
+      const quizId = parseIdParam(m[1]!);
+      if (quizId === undefined) return json({ error: "quizIdが不正です" }, 400);
+      return json(await repo.getQuizInsights(db, quizId));
+    }
+  }
+
   // 全quizの挑戦サマリー (ツリーのベスト表示用)。
   // "/api/attempts/:id" より先に評価すること (:id に吸われないように)。
   if (path === "/api/attempts/summary" && method === "GET") {
     return json(await repo.listAttemptSummaries(db));
+  }
+
+  // クイズ横断の完了履歴 (新しい順。履歴ページ用)。
+  // "/api/attempts/:id" より先に評価すること (:id に吸われないように)。
+  if (path === "/api/attempts/recent" && method === "GET") {
+    const v = validated(
+      z.object({ limit: z.coerce.number().int().optional() }).safeParse({
+        limit: url.searchParams.get("limit") ?? undefined,
+      }),
+    );
+    if ("res" in v) return v.res;
+    const rawLimit = v.data.limit ?? 50;
+    const limit = Math.min(Math.max(rawLimit, 1), 100);
+    return json(await repo.listRecentAttempts(db, limit));
   }
 
   // 苦手一括復習 (練習扱い・attempts系と完全分離。ベスト・サマリーに影響しない)。

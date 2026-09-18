@@ -884,6 +884,99 @@ export async function getAttemptDetail(
   };
 }
 
+/** 履歴ページの問題別集計: 完了済み挑戦の正誤を問題 (question_id) 単位の時系列に束ねる */
+export interface QuestionInsight {
+  questionId: number;
+  /** 最後に出題された版のスナップショット */
+  statement: string;
+  choices: string[];
+  correctAnswer: number;
+  explanation: string;
+  /** 古い順。null = 未回答 */
+  results: (boolean | null)[];
+}
+
+export async function getQuizInsights(
+  db: DB,
+  quizId: number,
+): Promise<{ attemptCount: number; questions: QuestionInsight[] }> {
+  const { results: rows } = await db
+    .prepare(
+      `SELECT a.id AS "attemptId", v.question_id AS "questionId", v.id AS "versionId",
+        v.statement AS "statement", v.explanation AS "explanation", aa.correct AS "correct"
+       FROM attempts a
+       JOIN attempt_questions aq ON aq.attempt_id = a.id
+       JOIN question_versions v ON v.id = aq.question_version_id
+       LEFT JOIN attempt_answers aa ON aa.attempt_question_id = aq.id
+       WHERE a.quiz_id = ? AND a.completed_at IS NOT NULL
+       ORDER BY a.id, aq.position`,
+    )
+    .bind(quizId)
+    .all<{
+      attemptId: number;
+      questionId: number;
+      versionId: number;
+      statement: string;
+      explanation: string | null;
+      correct: number | null;
+    }>();
+  const attemptIds = new Set<number>();
+  const byQuestion = new Map<
+    number,
+    { versionId: number; statement: string; explanation: string; results: (boolean | null)[] }
+  >();
+  for (const r of rows) {
+    attemptIds.add(Number(r.attemptId));
+    const qid = Number(r.questionId);
+    const cur = byQuestion.get(qid) ?? {
+      versionId: 0,
+      statement: "",
+      explanation: "",
+      results: [],
+    };
+    // 古い順に走査するので最後に見た版が最新スナップショットになる
+    cur.versionId = Number(r.versionId);
+    cur.statement = r.statement;
+    cur.explanation = r.explanation ?? "";
+    cur.results.push(r.correct === null ? null : Number(r.correct) === 1);
+    byQuestion.set(qid, cur);
+  }
+  if (!byQuestion.size) return { attemptCount: attemptIds.size, questions: [] };
+
+  const versionIds = [...new Set([...byQuestion.values()].map((q) => q.versionId))];
+  const placeholders = versionIds.map(() => "?").join(",");
+  const { results: choiceRows } = await db
+    .prepare(
+      `SELECT question_version_id AS "versionId", position, choice_text AS "text", is_correct AS "isCorrect"
+       FROM question_choices WHERE question_version_id IN (${placeholders})
+       ORDER BY question_version_id, position`,
+    )
+    .bind(...versionIds)
+    .all<{ versionId: number; position: number; text: string; isCorrect: number }>();
+  const choicesByVersion = new Map<number, { choices: string[]; correct: number }>();
+  for (const c of choiceRows) {
+    const entry = choicesByVersion.get(Number(c.versionId)) ?? { choices: [], correct: 0 };
+    entry.choices[Number(c.position) - 1] = c.text;
+    if (Number(c.isCorrect) === 1) entry.correct = Number(c.position);
+    choicesByVersion.set(Number(c.versionId), entry);
+  }
+
+  return {
+    attemptCount: attemptIds.size,
+    questions: [...byQuestion.entries()].map(([questionId, q]) => {
+      const c = choicesByVersion.get(q.versionId);
+      return {
+        questionId,
+        statement: q.statement,
+        choices: c?.choices ?? [],
+        correctAnswer: c?.correct ?? 0,
+        explanation: q.explanation,
+        results: q.results,
+      };
+    }),
+  };
+}
+
 export async function listAttemptSummaries(db: DB): Promise<AttemptSummary[]> {
   const { results } = await db
     .prepare(
@@ -895,6 +988,41 @@ export async function listAttemptSummaries(db: DB): Promise<AttemptSummary[]> {
     )
     .all<AttemptSummary>();
   return results;
+}
+
+/** クイズ横断の完了履歴 (新しい順)。パンくず付きで返す */
+export interface RecentAttempt extends Attempt {
+  quizTitle: string;
+  topicId: number;
+  topicTitle: string;
+  categoryId: number;
+  categoryTitle: string;
+}
+
+export async function listRecentAttempts(db: DB, limit: number): Promise<RecentAttempt[]> {
+  const { results } = await db
+    .prepare(
+      `SELECT a.id, a.quiz_id AS "quizId", a.score, a.total,
+        a.completed_at AS "completedAt", a.created_at AS "createdAt",
+        CASE WHEN a.completed_at IS NULL THEN NULL
+          ELSE CAST((julianday(a.completed_at) - julianday(a.created_at)) * 86400 AS INTEGER)
+        END AS "durationSec",
+        q.title AS "quizTitle",
+        t.id AS "topicId", t.title AS "topicTitle",
+        c.id AS "categoryId", c.title AS "categoryTitle"
+       FROM attempts a
+       JOIN quizzes q ON q.id = a.quiz_id
+       JOIN topics t ON t.id = q.topic_id
+       JOIN categories c ON c.id = t.category_id
+       WHERE a.completed_at IS NOT NULL
+       ORDER BY a.id DESC LIMIT ?`,
+    )
+    .bind(limit)
+    .all<RecentAttempt>();
+  return results.map((r) => ({
+    ...r,
+    durationSec: r.durationSec === null ? null : Number(r.durationSec),
+  }));
 }
 
 // ---------- Review (苦手一括復習: 練習扱い・attempts系と完全分離) ----------
@@ -1113,10 +1241,7 @@ export async function listMistakes(
 
 /** ブックマーク追加 (冪等: 既存は無視)。存在しない問題は 404 用エラーを投げる */
 export async function addBookmark(db: DB, questionId: number): Promise<void> {
-  const q = await db
-    .prepare("SELECT id FROM questions WHERE id = ?")
-    .bind(questionId)
-    .first();
+  const q = await db.prepare("SELECT id FROM questions WHERE id = ?").bind(questionId).first();
   if (!q) throw new Error("問題がありません");
   await db
     .prepare("INSERT OR IGNORE INTO question_bookmarks (question_id) VALUES (?)")

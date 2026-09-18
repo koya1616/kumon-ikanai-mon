@@ -102,7 +102,6 @@ export const Result = () => {
   }
 
   const { total, ng, ok, prev, pct, isBest, delta, tone } = derived;
-  const perfect = score === total;
 
   const startDrill = () => {
     if (!ng.length) return;
@@ -156,7 +155,6 @@ export const Result = () => {
                   </span>
                 )}
                 {isBest && <span className="score-chip is-ok">ベスト更新</span>}
-                {perfect && <span className="score-chip is-ok">満点</span>}
                 {ng.length > 0 && <span className="score-chip is-ng">見直し {ng.length}問</span>}
               </div>
             </div>

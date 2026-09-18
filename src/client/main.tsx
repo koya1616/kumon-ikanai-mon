@@ -42,6 +42,16 @@ const bootShell = (): void => {
   }
   if (navHome) navHome.dataset.nav = "home";
   if (navAdmin) navAdmin.dataset.nav = "admin";
+  for (const [id, nav] of [
+    ["side-home", "home"],
+    ["side-history", "history"],
+    ["side-review", "review"],
+    ["side-bookmarks", "bookmarks"],
+    ["side-admin", "admin"],
+  ] as const) {
+    const el = document.getElementById(id);
+    if (el) el.dataset.nav = nav;
+  }
 };
 
 bootShell();

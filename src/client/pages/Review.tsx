@@ -2,7 +2,7 @@
 // POST /api/review/answers で1回答ずつ記録する。attempts系の履歴・スコアには影響しない。
 // 直近REVIEW_CLEAR_STREAK連続正解で苦手解消となる。
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Link, useNavigate } from "react-router";
+import { Link, useNavigate, useSearchParams } from "react-router";
 import { api } from "../api";
 import type { MistakeItem, ReviewAnswerResult } from "../api";
 import { BookmarkButton } from "../bookmark";
@@ -19,6 +19,9 @@ const REVIEW_LIMIT = 30;
 
 export const Review = () => {
   const navigate = useNavigate();
+  // ?quiz=ID で1クイズの苦手だけに絞る (履歴ページからの導線)
+  const [params] = useSearchParams();
+  const quizFilter = Number(params.get("quiz")) || null;
   const [state, setState] = useState<LoadState>({ name: "loading" });
   const [order, setOrder] = useState<MistakeItem[]>([]);
   const [pos, setPos] = useState(0);
@@ -34,7 +37,9 @@ export const Review = () => {
 
   useEffect(() => {
     let alive = true;
-    api<{ items: MistakeItem[] }>(`/api/review/mistakes?limit=${REVIEW_LIMIT}`)
+    api<{ items: MistakeItem[] }>(
+      `/api/review/mistakes?limit=${REVIEW_LIMIT}${quizFilter ? `&quizId=${quizFilter}` : ""}`,
+    )
       .then((d) => {
         if (!alive) return;
         const items = d.items ?? [];
@@ -49,7 +54,7 @@ export const Review = () => {
     return () => {
       alive = false;
     };
-  }, []);
+  }, [quizFilter]);
 
   const reshuffle = useCallback(() => {
     if (state.name !== "ready") return;

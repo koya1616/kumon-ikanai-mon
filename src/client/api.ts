@@ -106,6 +106,15 @@ export interface AttemptRecord {
   durationSec: number | null;
 }
 
+/** クイズ横断の完了履歴1件 (GET /api/attempts/recent の返却形) */
+export interface AttemptHistoryItem extends AttemptRecord {
+  quizTitle: string;
+  topicId: number;
+  topicTitle: string;
+  categoryId: number;
+  categoryTitle: string;
+}
+
 export interface AttemptDetailItem {
   position: number;
   attemptQuestionId: number;
@@ -129,6 +138,22 @@ export interface AttemptDetail {
   createdAt: string;
   durationSec: number | null;
   items: AttemptDetailItem[];
+}
+
+/** 問題別集計の1問 (GET /api/quizzes/:id/insights) */
+export interface QuestionInsight {
+  questionId: number;
+  statement: string;
+  choices: string[];
+  correctAnswer: number;
+  explanation: string;
+  /** 古い順。null = 未回答 */
+  results: (boolean | null)[];
+}
+
+export interface QuizInsights {
+  attemptCount: number;
+  questions: QuestionInsight[];
 }
 
 /** 苦手一括復習用の1問 (練習扱い・採点はサーバで行い記録する) */

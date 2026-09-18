@@ -78,7 +78,7 @@ export const Category = () => {
             <div className="cat-band-meta">
               <h1 className="title-lg">{category.title}</h1>
               <p className="muted">
-                {s.tried}/{s.total} クイズに挑戦ずみ · 満点 {s.perfect}
+                {s.tried}/{s.total} クイズに挑戦ずみ
                 {filtering && ` · ${shown}件表示中`}
               </p>
             </div>
