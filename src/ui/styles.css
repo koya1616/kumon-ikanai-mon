@@ -304,6 +304,12 @@
     padding: 0;
     max-width: none;
   }
+
+  /* ブックマークはフルブリード: シェルの幅制限を外す (bm-* が独自paddingを持つ) */
+  body[data-page="bookmarks"] .main {
+    max-width: none;
+    padding: 0;
+  }
 }
 
 @layer components {
@@ -2796,9 +2802,210 @@
 }
 .hist-qhead {
   display: grid;
-  grid-template-columns: 32px 1fr;
+  grid-template-columns: 32px 1fr auto;
   gap: 10px;
-  align-items: center;
+  align-items: start;
   padding: 12px 14px 4px;
   font-weight: 600;
+}
+
+/* ---- bookmarks (#/bookmarks): フルブリード自習グリッド (幅制限なし) ---- */
+/* 星ボタン (共通): 文章量に関わらず右端に固定・潰れない・44px級タップ域 */
+.bookmark-btn {
+  flex: none;
+  align-self: start;
+  min-width: 40px;
+  min-height: 40px;
+  font-size: 16px;
+  line-height: 1;
+  padding: 0 8px;
+}
+.bm-band {
+  width: 100%;
+  border-bottom: 1px solid var(--rule-soft);
+  background:
+    radial-gradient(1100px 300px at 88% -90px, var(--yamabuki-soft), transparent 60%),
+    radial-gradient(820px 280px at 6% -70px, var(--moegi-soft), transparent 55%),
+    var(--paper-2);
+  padding: 28px clamp(16px, 4vw, 64px) 24px;
+}
+.bm-band-inner {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.bm-toolbar {
+  position: sticky;
+  top: var(--nav-h);
+  z-index: 20;
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+  padding: 12px clamp(16px, 4vw, 64px);
+  background: color-mix(in srgb, var(--paper) 88%, transparent);
+  backdrop-filter: blur(14px) saturate(1.2);
+  border-bottom: 1px solid var(--rule-soft);
+}
+.bm-toolbar .search {
+  flex: 1;
+  min-width: min(100%, 200px);
+}
+.bm-quiz-filter {
+  width: auto;
+  min-width: 0;
+  max-width: min(100%, 220px);
+  min-height: 46px;
+}
+.bm-count {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--ink-2);
+  white-space: nowrap;
+}
+.bm-body {
+  width: 100%;
+  padding: 20px clamp(16px, 4vw, 64px) 120px;
+}
+.bm-grid {
+  list-style: none;
+  margin: 0 auto;
+  padding: 0;
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 16px;
+  align-items: start;
+  max-width: 1400px;
+}
+@media (min-width: 900px) {
+  .bm-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+.bm-card {
+  border: 1px solid var(--rule-soft);
+  border-radius: var(--r-lg);
+  background: var(--paper-2);
+  box-shadow: var(--shadow-1);
+  padding: 16px 16px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  animation: bm-in 0.35s var(--ease) backwards;
+  transition:
+    transform 0.15s var(--ease),
+    box-shadow 0.2s var(--ease);
+}
+.bm-card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-2, var(--shadow-1));
+}
+.bm-head {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.bm-quiz {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-decoration: none;
+}
+.bm-statement {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1.6;
+}
+.bm-choices {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.bm-choice {
+  display: grid;
+  grid-template-columns: 28px 1fr auto;
+  gap: 10px;
+  align-items: center;
+  padding: 9px 12px;
+  border: 1.5px solid var(--rule-soft);
+  border-radius: var(--r-md);
+  background: var(--paper);
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.5;
+}
+.bm-key {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  display: grid;
+  place-items: center;
+  background: var(--paper-3);
+  color: var(--ink-2);
+  font-weight: 800;
+  font-size: 13px;
+}
+.bm-card.is-revealed .bm-choice.is-correct {
+  border-color: var(--moegi);
+  background: var(--moegi-soft);
+}
+.bm-card.is-revealed .bm-choice.is-correct .bm-key {
+  background: var(--moegi);
+  color: #fff;
+}
+.bm-card.is-revealed .bm-choice:not(.is-correct) {
+  opacity: 0.55;
+}
+.bm-mark {
+  color: var(--moegi);
+  font-weight: 800;
+  font-family: var(--font-serif);
+}
+.bm-answer {
+  margin: 0;
+  font-weight: 800;
+  color: var(--moegi);
+}
+.bm-card .exp {
+  padding: 10px 12px;
+  background: var(--paper-3);
+  border-radius: var(--r-sm);
+  white-space: pre-wrap;
+  font-size: 14px;
+}
+.bm-foot {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 2px;
+}
+.bm-solve {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--ink-2);
+}
+.bm-solve:hover {
+  color: var(--shu);
+}
+@keyframes bm-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .bm-card {
+    animation: none;
+  }
+  .bm-card:hover {
+    transform: none;
+  }
 }

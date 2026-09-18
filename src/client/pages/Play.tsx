@@ -15,6 +15,7 @@ import {
 import { RichText } from "../rich";
 import { getSession, setSession } from "../session";
 import type { PlaySession } from "../session";
+import { BookmarkButton } from "../bookmark";
 import { EmptyState, Icon, Stars } from "../ui";
 import { useToast } from "../toast";
 import { useTree } from "../tree";
@@ -422,7 +423,9 @@ const PlayingScreen = ({ play, onChange }: { play: LivePlay; onChange: (p: LiveP
             <Stars n={play.quiz.difficulty} />
           </div>
           <div className="q-wrap">
-            <div className="q-num">第 {play.index + 1} 問</div>
+            <div className="q-num">
+              第 {play.index + 1} 問 <BookmarkButton questionId={q.questionId} />
+            </div>
             <h1 className="q-statement rich">
               <RichText text={q.statement} />
             </h1>

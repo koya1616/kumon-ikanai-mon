@@ -355,12 +355,12 @@ export async function listQuestionsByQuiz(db: DB, quizId: number): Promise<Quest
 export async function listPlayQuestions(db: DB, quizId: number): Promise<PlayQuestion[]> {
   const { results } = await db
     .prepare(
-      `SELECT v.id AS "questionVersionId", v.statement AS "statement"
+      `SELECT q.id AS "questionId", v.id AS "questionVersionId", v.statement AS "statement"
        FROM questions q JOIN question_versions v ON v.id = q.current_version_id
        WHERE q.quiz_id = ? ORDER BY q.id`,
     )
     .bind(quizId)
-    .all<{ questionVersionId: number; statement: string }>();
+    .all<{ questionId: number; questionVersionId: number; statement: string }>();
   if (!results.length) return [];
   const ids = results.map((r) => r.questionVersionId);
   const placeholders = ids.map(() => "?").join(",");
@@ -378,6 +378,7 @@ export async function listPlayQuestions(db: DB, quizId: number): Promise<PlayQue
     byVersion.set(c.versionId, arr);
   }
   return results.map((r) => ({
+    questionId: r.questionId,
     questionVersionId: r.questionVersionId,
     statement: r.statement,
     choices: byVersion.get(r.questionVersionId) ?? [],
@@ -389,6 +390,7 @@ export async function listAttemptPlayQuestions(db: DB, attemptId: number): Promi
   const { results } = await db
     .prepare(
       `SELECT aq.id AS "attemptQuestionId", aq.position AS "position",
+        v.question_id AS "questionId",
         v.id AS "questionVersionId", v.statement AS "statement"
        FROM attempt_questions aq JOIN question_versions v ON v.id = aq.question_version_id
        WHERE aq.attempt_id = ? ORDER BY aq.position`,
@@ -397,6 +399,7 @@ export async function listAttemptPlayQuestions(db: DB, attemptId: number): Promi
     .all<{
       attemptQuestionId: number;
       position: number;
+      questionId: number;
       questionVersionId: number;
       statement: string;
     }>();
@@ -417,6 +420,7 @@ export async function listAttemptPlayQuestions(db: DB, attemptId: number): Promi
     byVersion.set(c.versionId, arr);
   }
   return results.map((r) => ({
+    questionId: r.questionId,
     questionVersionId: r.questionVersionId,
     attemptQuestionId: r.attemptQuestionId,
     position: r.position,
@@ -770,6 +774,7 @@ export async function getAttemptDetail(
   items: {
     position: number;
     attemptQuestionId: number;
+    questionId: number;
     questionVersionId: number;
     statement: string;
     choices: string[];
@@ -803,6 +808,7 @@ export async function getAttemptDetail(
   const { results: rows } = await db
     .prepare(
       `SELECT aq.id AS "attemptQuestionId", aq.position AS "position",
+        v.question_id AS "questionId",
         v.id AS "questionVersionId", v.statement AS "statement",
         v.explanation AS "explanation",
         aa.choice_position AS "picked", aa.choice_text_snapshot AS "pickedText",
@@ -818,6 +824,7 @@ export async function getAttemptDetail(
     .all<{
       attemptQuestionId: number;
       position: number;
+      questionId: number;
       questionVersionId: number;
       statement: string;
       explanation: string | null;
@@ -864,6 +871,7 @@ export async function getAttemptDetail(
     items: rows.map((r) => ({
       position: Number(r.position),
       attemptQuestionId: Number(r.attemptQuestionId),
+      questionId: Number(r.questionId),
       questionVersionId: Number(r.questionVersionId),
       statement: r.statement,
       choices: byVersion.get(r.questionVersionId) ?? [],
@@ -1097,6 +1105,123 @@ export async function listMistakes(
       explanation: r.explanation ?? "",
       mistakeCount: Number(r.mistakeCount),
       lastWrongAt: r.lastWrongAt,
+    };
+  });
+}
+
+// ---------- Bookmark (1問保存: 解答履歴と分離。成績・集計に影響しない) ----------
+
+/** ブックマーク追加 (冪等: 既存は無視)。存在しない問題は 404 用エラーを投げる */
+export async function addBookmark(db: DB, questionId: number): Promise<void> {
+  const q = await db
+    .prepare("SELECT id FROM questions WHERE id = ?")
+    .bind(questionId)
+    .first();
+  if (!q) throw new Error("問題がありません");
+  await db
+    .prepare("INSERT OR IGNORE INTO question_bookmarks (question_id) VALUES (?)")
+    .bind(questionId)
+    .run();
+}
+
+/** ブックマーク削除 (冪等: 無くても成功) */
+export async function removeBookmark(db: DB, questionId: number): Promise<void> {
+  await db.prepare("DELETE FROM question_bookmarks WHERE question_id = ?").bind(questionId).run();
+}
+
+/** ブックマーク済みか */
+export async function isBookmarked(db: DB, questionId: number): Promise<boolean> {
+  const row = await db
+    .prepare("SELECT 1 AS one FROM question_bookmarks WHERE question_id = ?")
+    .bind(questionId)
+    .first();
+  return row !== null;
+}
+
+/**
+ * ブックマーク一覧: 最新版スナップショット付きでランダム順に返す。
+ * ランダム表示が要件のため ORDER BY RANDOM() に固定する。
+ */
+export async function listBookmarks(
+  db: DB,
+  filter: { quizId?: number | undefined; limit?: number | undefined },
+): Promise<
+  {
+    questionId: number;
+    questionVersionId: number;
+    quizId: number;
+    quizTitle: string;
+    statement: string;
+    choices: string[];
+    answer: number;
+    explanation: string;
+    bookmarkedAt: string;
+  }[]
+> {
+  const limit = Math.min(Math.max(filter.limit ?? 30, 1), 100);
+  const conds: string[] = [];
+  const params: unknown[] = [];
+  if (filter.quizId !== undefined) {
+    conds.push("q.quiz_id = ?");
+    params.push(filter.quizId);
+  }
+  const where = conds.length ? `WHERE ${conds.join(" AND ")}` : "";
+  const { results: rows } = await db
+    .prepare(
+      `SELECT q.id AS "questionId",
+        q.current_version_id AS "questionVersionId",
+        q.quiz_id AS "quizId", qz.title AS "quizTitle",
+        cv.statement AS "statement", cv.explanation AS "explanation",
+        b.created_at AS "bookmarkedAt"
+       FROM question_bookmarks b
+       JOIN questions q ON q.id = b.question_id
+       JOIN quizzes qz ON qz.id = q.quiz_id
+       JOIN question_versions cv ON cv.id = q.current_version_id
+       ${where}
+       ORDER BY RANDOM() LIMIT ?`,
+    )
+    .bind(...params, limit)
+    .all<{
+      questionId: number;
+      questionVersionId: number;
+      quizId: number;
+      quizTitle: string;
+      statement: string;
+      explanation: string | null;
+      bookmarkedAt: string;
+    }>();
+  if (!rows.length) return [];
+  const ids = rows.map((r) => r.questionVersionId);
+  const placeholders = ids.map(() => "?").join(",");
+  const { results: choiceRows } = await db
+    .prepare(
+      `SELECT question_version_id AS "versionId", position, choice_text AS "text", is_correct AS "isCorrect"
+       FROM question_choices WHERE question_version_id IN (${placeholders}) ORDER BY question_version_id, position`,
+    )
+    .bind(...ids)
+    .all<{ versionId: number; position: number; text: string; isCorrect: number }>();
+  const byVersion = new Map<number, { choices: string[]; answer: number }>();
+  for (const ch of choiceRows) {
+    let entry = byVersion.get(ch.versionId);
+    if (!entry) {
+      entry = { choices: [], answer: 1 };
+      byVersion.set(ch.versionId, entry);
+    }
+    entry.choices[ch.position - 1] = ch.text;
+    if (ch.isCorrect === 1) entry.answer = ch.position;
+  }
+  return rows.map((r) => {
+    const e = byVersion.get(r.questionVersionId) ?? { choices: [], answer: 1 };
+    return {
+      questionId: Number(r.questionId),
+      questionVersionId: Number(r.questionVersionId),
+      quizId: Number(r.quizId),
+      quizTitle: r.quizTitle,
+      statement: r.statement,
+      choices: e.choices,
+      answer: e.answer,
+      explanation: r.explanation ?? "",
+      bookmarkedAt: r.bookmarkedAt,
     };
   });
 }

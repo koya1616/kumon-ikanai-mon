@@ -45,6 +45,7 @@ export interface Question {
 }
 
 export interface PlayQuestion {
+  questionId: number;
   questionVersionId: number;
   attemptQuestionId?: number;
   position?: number;
@@ -108,6 +109,7 @@ export interface AttemptRecord {
 export interface AttemptDetailItem {
   position: number;
   attemptQuestionId: number;
+  questionId: number;
   questionVersionId: number;
   statement: string;
   choices: string[];
@@ -144,6 +146,19 @@ export interface MistakeItem {
   explanation: string;
   mistakeCount: number;
   lastWrongAt: string | null;
+}
+
+/** ブックマーク一覧用の1問 (最新版スナップショット + ブックマーク日時) */
+export interface BookmarkItem {
+  questionId: number;
+  questionVersionId: number;
+  quizId: number;
+  quizTitle: string;
+  statement: string;
+  choices: string[];
+  answer: number;
+  explanation: string;
+  bookmarkedAt: string;
 }
 
 /** POST /api/review/answers の返却形 (サーバ採点・連続正解数付き) */

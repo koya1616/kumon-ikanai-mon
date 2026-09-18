@@ -187,6 +187,20 @@ export const Home = () => {
                 </Link>
               </section>
             )}
+            <section aria-label="ブックマーク">
+              <Link
+                className="resume-item"
+                to="/bookmarks"
+                aria-label="ブックマークした問題を見る"
+              >
+                <div className="grow">
+                  <div style={{ fontWeight: 700 }}>ブックマーク</div>
+                  <div className="muted">保存した問題をランダムに表示します</div>
+                </div>
+                <span className="chip chip-moegi">★ 見る</span>
+                <Icon name="arrow" />
+              </Link>
+            </section>
             {resumable.length > 0 && (
               <section aria-label="回答途中">
                 <div className="section-head">

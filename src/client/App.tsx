@@ -9,6 +9,7 @@ import { Play } from "./pages/Play";
 import { Result } from "./pages/Result";
 import { History } from "./pages/History";
 import { Review } from "./pages/Review";
+import { Bookmarks } from "./pages/Bookmarks";
 import { Admin } from "./pages/Admin";
 
 /** シェル (view.ts の header/tabbar) と body[data-mode] の同期 + スクロール復帰。 */
@@ -31,6 +32,12 @@ const ShellSync = () => {
     } else {
       document.body.removeAttribute("data-mode");
     }
+    // ページ別のシェル調整用 (例: bookmarks は .main の幅制限を外す)
+    if (location.pathname.startsWith("/bookmarks")) {
+      document.body.dataset.page = "bookmarks";
+    } else {
+      document.body.removeAttribute("data-page");
+    }
     window.scrollTo(0, 0);
   }, [location]);
   return null;
@@ -50,6 +57,7 @@ export const App = () => {
               <Route path="/result" element={<Result />} />
               <Route path="/h/:id" element={<History />} />
               <Route path="/review" element={<Review />} />
+              <Route path="/bookmarks" element={<Bookmarks />} />
               <Route path="/admin" element={<Admin key="admin" />} />
               <Route path="/admin/c/:id" element={<Admin key="admin-c" />} />
               <Route path="/admin/t/:id" element={<Admin key="admin-t" />} />

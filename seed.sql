@@ -2,6 +2,7 @@
 -- 前提: QUESTIONS_PER_QUIZ=10 / 選択肢4つ・正解1つ / versionは1始まり / attemptsはscore<=total
 -- 冪等ではなくリセット方式: FKをOFFにして全消去→INSERT
 PRAGMA foreign_keys = OFF;
+DELETE FROM question_bookmarks;
 DELETE FROM attempt_answers;
 DELETE FROM attempt_questions;
 DELETE FROM attempts;

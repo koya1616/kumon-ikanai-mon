@@ -63,6 +63,7 @@ export interface Question {
 
 /** 解答用 (答え・解説なし) */
 export interface PlayQuestion {
+  questionId: number;
   questionVersionId: number;
   attemptQuestionId?: number;
   position?: number;
@@ -257,6 +258,7 @@ export interface Attempt {
 export interface AttemptDetailItem {
   position: number;
   attemptQuestionId: number;
+  questionId: number;
   questionVersionId: number;
   statement: string;
   choices: string[];
@@ -287,6 +289,24 @@ export interface AttemptSummary {
   bestTotal: number;
   lastCompletedAt: string | null;
 }
+
+/** ブックマーク一覧用の1問 (最新版スナップショット + ブックマーク日時) */
+export interface BookmarkItem {
+  questionId: number;
+  questionVersionId: number;
+  quizId: number;
+  quizTitle: string;
+  statement: string;
+  choices: string[];
+  answer: number;
+  explanation: string;
+  bookmarkedAt: string;
+}
+
+/** ブックマーク追加・削除用 */
+export const bookmarkBodySchema = z.object({
+  questionId: idParamSchema,
+});
 
 /** POST /api/review/answers の返却形 */
 export interface ReviewAnswerResult {

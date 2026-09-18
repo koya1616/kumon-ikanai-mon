@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router";
 import { api } from "../api";
 import type { MistakeItem, ReviewAnswerResult } from "../api";
+import { BookmarkButton } from "../bookmark";
 import { RichText } from "../rich";
 import { shuffle } from "../resume";
 import { Crumbs, EmptyState, Skeletons } from "../ui";
@@ -284,7 +285,8 @@ export const Review = () => {
             </div>
             <p className="muted">
               {target.mistakeCount > 1 ? `${target.mistakeCount}回間違い · ` : ""}元クイズ:{" "}
-              <Link to={`/play/${target.quizId}`}>{target.quizTitle}</Link>
+              <Link to={`/play/${target.quizId}`}>{target.quizTitle}</Link>{" "}
+              <BookmarkButton questionId={target.questionId} />
             </p>
             <p className="q-statement rich">
               <RichText text={target.statement} />

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router";
 import { api, fmtDuration } from "../api";
 import type { AttemptDetail, AttemptRecord, QuizMeta } from "../api";
+import { BookmarkButton } from "../bookmark";
 import { RichText } from "../rich";
 import { Crumbs, EmptyState, Skeletons, Stars } from "../ui";
 
@@ -256,6 +257,7 @@ const HistoryRow = ({
                         <RichText text={it.statement} />
                       </span>
                     </span>
+                    <BookmarkButton questionId={it.questionId} />
                   </div>
                   <div className="review-body">
                     {it.picked === null ? (
@@ -292,8 +294,7 @@ const HistoryRow = ({
   );
 };
 
-const HistDate = ({ value }: { value: string | null }) => {
-  if (!value) return <span />;
+const HistDate = ({ value }: { value: string | null }) => {  if (!value) return <span />;
   const d = new Date(
     String(value).replace(" ", "T") +
       (String(value).includes("Z") || String(value).includes("+") ? "" : "Z"),

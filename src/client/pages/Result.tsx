@@ -6,6 +6,7 @@ import { clearResume } from "../resume";
 import { RichText } from "../rich";
 import { getSession } from "../session";
 import type { SessionAnswer } from "../session";
+import { BookmarkButton } from "../bookmark";
 import { Crumbs, fmtDate, Ring, Stars } from "../ui";
 import { useTree } from "../tree";
 
@@ -327,6 +328,7 @@ const ReviewCard = ({
             {a.ok ? "できた" : "見直し"}
           </span>
         </span>
+        <BookmarkButton questionId={a.q.questionId} />
       </summary>
       <div className="review-body">
         <div className={`review-your ${a.ok ? "is-ok" : "is-ng"}`}>

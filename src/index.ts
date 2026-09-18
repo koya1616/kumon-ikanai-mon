@@ -4,6 +4,7 @@ import { html } from "./view";
 import { QUESTIONS_PER_QUIZ } from "./domain";
 import {
   answerBodySchema,
+  bookmarkBodySchema,
   idParamSchema,
   questionBatchSchema,
   questionCreateSchema,
@@ -584,6 +585,56 @@ async function route(req: Request, env: Env): Promise<Response> {
       const message = (e as Error).message;
       if (message === "問題がありません") return json({ error: message }, 404);
       return json({ error: message }, 400);
+    }
+  }
+
+  // ブックマーク (1問保存・解答履歴と分離。一覧はランダム順)
+  if (path === "/api/bookmarks" && method === "GET") {
+    const v = validated(
+      z
+        .object({
+          quizId: idParamSchema.optional(),
+          limit: z.coerce
+            .number()
+            .int()
+            .min(1, { message: "limitは1-100で指定してください" })
+            .max(100, { message: "limitは1-100で指定してください" })
+            .optional(),
+        })
+        .safeParse({
+          quizId: url.searchParams.get("quizId") ?? undefined,
+          limit: url.searchParams.get("limit") ?? undefined,
+        }),
+    );
+    if ("res" in v) return v.res;
+    return json({ items: await repo.listBookmarks(db, v.data) });
+  }
+
+  if (path === "/api/bookmarks" && method === "POST") {
+    const body = await readJson(req);
+    if ("res" in body) return body.res;
+    const v = validated(bookmarkBodySchema.safeParse(body.value));
+    if ("res" in v) return v.res;
+    try {
+      await repo.addBookmark(db, v.data.questionId);
+    } catch (e) {
+      const message = (e as Error).message;
+      if (message === "問題がありません") return json({ error: message }, 404);
+      return json({ error: message }, 400);
+    }
+    return json({ ok: true }, 201);
+  }
+
+  {
+    const m = /^\/api\/bookmarks\/([^/]+)$/.exec(path);
+    if (m && (method === "GET" || method === "DELETE")) {
+      const questionId = parseIdParam(m[1]!);
+      if (questionId === undefined) return json({ error: "questionIdが不正です" }, 400);
+      if (method === "GET") {
+        return json({ bookmarked: await repo.isBookmarked(db, questionId) });
+      }
+      await repo.removeBookmark(db, questionId);
+      return json({ ok: true });
     }
   }
 

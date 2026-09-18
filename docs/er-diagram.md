@@ -73,6 +73,11 @@ erDiagram
         INTEGER correct "0|1 NOT NULL"
         TEXT created_at "DEFAULT datetime('now')"
     }
+    question_bookmarks {
+        INTEGER id PK "AUTOINCREMENT"
+        INTEGER question_id FK "UNIQUE NOT NULL, CASCADE"
+        TEXT created_at "DEFAULT datetime('now')"
+    }
 
     categories ||--o{ topics : "CASCADE"
     topics ||--o{ quizzes : "CASCADE"
@@ -84,6 +89,7 @@ erDiagram
     attempts ||--o{ attempt_questions : "CASCADE"
     question_versions ||--o{ attempt_questions : "RESTRICT"
     attempt_questions ||--|| attempt_answers : "1:1 CASCADE"
+    questions ||--o| question_bookmarks : "1:1 CASCADE"
 ```
 
 ## リレーションシップ一覧
@@ -100,6 +106,7 @@ erDiagram
 | attempts → attempt_questions            | attempt_questions.attempt_id                        | CASCADE                   | 出題スナップショット。UNIQUE(attempt_id, position), UNIQUE(attempt_id, question_version_id) |
 | question_versions → attempt_questions   | attempt_questions.question_version_id               | RESTRICT                  | 出題時点の版を固定参照                                                                      |
 | attempt_questions → attempt_answers     | attempt_answers.attempt_question_id                 | CASCADE                   | UNIQUE制約で 1:1 (出題1行に回答1行)                                                         |
+| questions → question_bookmarks          | question_bookmarks.question_id                      | CASCADE                   | 1問1ブックマーク。UNIQUE(question_id)。解答履歴と分離                                       |
 
 ## UNIQUE / CHECK 一覧
 
@@ -111,3 +118,4 @@ erDiagram
 - attempts: CHECK(score >= 0), CHECK(total >= 0), CHECK(score <= total)
 - attempt_questions: UNIQUE(attempt_id, position), UNIQUE(attempt_id, question_version_id)
 - attempt_answers: UNIQUE(attempt_question_id), choice_position >= 1, correct IN (0,1)
+- question_bookmarks: UNIQUE(question_id)
