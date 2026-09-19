@@ -53,48 +53,33 @@
       "explanation": "`a?.b` は a が null/undefined なら評価を止めて undefined を返します。"
     },
     {
-      "statement": "`??`（Null合体）の動作は？",
-      "choice1": "左が null/undefined のとき右を返す",
-      "choice2": "左が 0 のときも右を返す",
-      "choice3": "常に右を返す",
-      "choice4": "論理積と同じ",
-      "answer": 1,
-      "explanation": "`a ?? b` は a が null/undefined のときだけ b を返します（0 や '' はそのまま）。"
+      "questionType": "cloze_text",
+      "statement": "`a ?? b` は a が {{1}} のときだけ b を返す。`0` や `''` は {{2}}。",
+      "answers": ["null/undefined", "そのまま"],
+      "explanation": "Null合体は null/undefined のときだけ右を返します。"
     },
     {
-      "statement": "`Promise<string>` の resolve 値の取り方は？",
-      "choice1": "await または then で受け取る",
-      "choice2": "直接 string として扱える",
-      "choice3": "JSON.parse する",
-      "choice4": "Number() で囲む",
-      "answer": 1,
+      "questionType": "cloze_text",
+      "statement": "`Promise<string>` の中身は {{1}} または {{2}} で取り出す。",
+      "answers": ["await", "then"],
       "explanation": "Promise の中身は await / then で取り出します。"
     },
     {
-      "statement": "`readonly string[]` にできる操作は？",
-      "choice1": "push できる",
-      "choice2": "読み取りはできるが push は型エラー",
-      "choice3": "代入も参照もできない",
-      "choice4": "pop のみできる",
-      "answer": 2,
+      "questionType": "cloze_text",
+      "statement": "`readonly string[]` は {{1}} はできるが {{2}} は型エラーになる。",
+      "answers": ["読み取り", "push"],
       "explanation": "readonly 配列は参照OK・変更操作は型エラーになります。"
     },
     {
-      "statement": "次の `id` を呼び出した結果の型は？\n```ts\nfunction id<T>(x: T): T {\n  return x;\n}\nconst s = id(\"hello\");\n```",
-      "choice1": "unknown",
-      "choice2": "any",
-      "choice3": "string",
-      "choice4": "T のまま決まらない",
-      "answer": 3,
+      "questionType": "cloze_text",
+      "statement": "次の `s` の型は {{1}} と推論される。\n```ts\nfunction id<T>(x: T): T {\n  return x;\n}\nconst s = id(\"hello\");\n```",
+      "answers": ["string"],
       "explanation": "呼び出し時に `T = string` と推論されるため、`s` の型は `string` です。"
     },
     {
-      "statement": "`npx tsc --noEmit` の意味は？",
-      "choice1": "型チェックのみ行い出力しない",
-      "choice2": "JS を出力して実行する",
-      "choice3": "node_modules を削除する",
-      "choice4": "テストを実行する",
-      "answer": 1,
+      "questionType": "cloze_text",
+      "statement": "`npx tsc {{1}}` は型チェックのみ行い {{2}} しない。",
+      "answers": ["--noEmit", "出力"],
       "explanation": "--noEmit は emit せず型エラーの有無だけ確認します。"
     }
   ]

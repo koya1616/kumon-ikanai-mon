@@ -1,21 +1,20 @@
-# 本番DBへの問題追加手順（新規クイズごと）
+# クイズ追加手順（新規クイズごと）
 
-API 経由で category / topic / quiz + 10問を一括投入する。`seed.sql` は全消去型のため**本番に流さないこと**。
+JSONファイルを作成し、管理画面の「JSONで一括登録」から登録する。コマンドからの実行はしない。
+
+`seed.sql` は全消去型のため**本番に流さないこと**。
 
 ## 前提
 
+- マイグレ `0004_cloze.sql` 適用済みであること
 - 本番URL（例: `https://kumon-ikanai-mon.xxx.workers.dev`）
-- Basic認証の `BASIC_USER` / `BASIC_PASS`（本番Secretsに設定済みであること）
-  - 確認: `pnpm exec wrangler secret list`
-  - 未設定なら: `pnpm exec wrangler secret put BASIC_USER` / `pnpm exec wrangler secret put BASIC_PASS`
+- Basic認証の `BASIC_USER` / `BASIC_PASS`（管理画面アクセス時に使用）
 
-## 1. 入力JSONを用意する
+## 1. JSONファイルを作成する
 
-`data/quizzes/example.json` をコピーして編集する。
+`data/quizzes/example.json` をコピーして編集する。必ずJSONファイルを作成すること（直書き・SQL直投入はしない）。
 
-```bash
-cp data/quizzes/example.json data/quizzes/my-quiz.json
-```
+1クイズあたり10問。そのうち5問は4択（`single_choice`）、5問は穴埋め（`cloze_text`）にする。
 
 形式:
 
@@ -33,6 +32,12 @@ cp data/quizzes/example.json data/quizzes/my-quiz.json
       "choice4": "...",
       "answer": 2,
       "explanation": "..."
+    },
+    {
+      "questionType": "cloze_text",
+      "statement": "江戸幕府を開いたのは徳川{{1}}である。幕府は約{{2}}年続いた。",
+      "answers": ["家康", "260"],
+      "explanation": "家康が開府。約260年続いた。"
     }
   ]
 }
@@ -40,69 +45,42 @@ cp data/quizzes/example.json data/quizzes/my-quiz.json
 
 ルール:
 
-- `questions` はちょうど10問（4択・穴埋め混在可。穴埋め形式は `docs/adding-cloze-quiz.md` 参照）
-- `choice1〜4` はすべて必須、`answer` は1〜4
-- `quiz.status` 省略時は `published`（登録後すぐ出題される）。下書きにしたい場合のみ `"draft"` を明示する
+- `questions` はちょうど10問。内訳は4択5問＋穴埋め（`cloze_text`）5問
+- 4択: `statement` / `choice1〜4` はすべて必須、`answer` は1〜4。`questionType` は省略する
+- 穴埋め: `questionType: "cloze_text"` を明示する（`close_text` と書かない。言語学用語 cloze test 由来）
+- 穴埋めの問題文中の空欄は `{{1}}`, `{{2}}` … と書く（半角波括弧＋1始まり連番。飛び番・0始まり不可）
+- 穴埋めの `answers` は空欄番号順に1〜20個（各1〜100文字）。`{{n}}` と個数・順序を一致させること
+- 1quizあたりの問題数カウントは「文章数」（空欄数ではない）
+- 正答は完全一致（前後空白のみ除去）。別解は現在未対応（1空欄に複数正答を入れない）
+- 同一の問題に `question_choices` と穴埋め定義を混在させない
+- `difficulty` 1〜5、`quiz.status` 省略時は `published`（登録後すぐ出題される）。下書きにしたい場合のみ `"draft"` を明示する
 - 同名 `category` / `topic` は再利用される。同名 `quiz` が同じtopicに存在すると中断（誤上書き防止）
 
-## 2. dry-run で検証する
+## 2. 管理画面から登録する
 
-POSTせず検証と重複チェックだけ行う。
+1. 管理画面 `https://<本番URL>/#/admin` を開く
+2. 「JSONで一括登録」に作成したJSONファイルを選択（または内容を貼り付け）する
+3. 「内容を確認」で `category › topic › title` と10問表示を確認する
+4. 「JSONで登録する」を押す
 
-```bash
-BASIC_USER=admin BASIC_PASS=xxx \
-  pnpm quiz:add -- --file data/quizzes/my-quiz.json --url https://<本番URL> --dry-run
-```
+## 3. 確認する
 
-`dry-run OK` と出れば次へ。エラーが出たらJSONを修正する。
-
-## 3. ローカルで試す（任意だが推奨）
-
-```bash
-pnpm dev # 別ターミナルで起動
-BASIC_USER=admin BASIC_PASS=password \
-  pnpm quiz:add -- --file data/quizzes/my-quiz.json --url http://127.0.0.1:8787
-```
-
-`.dev.vars` の値と `BASIC_USER/PASS` を合わせること。
-
-## 4. 本番に投入する
-
-```bash
-BASIC_USER=xxx BASIC_PASS=xxx \
-  pnpm quiz:add -- --file data/quizzes/my-quiz.json --url https://<本番URL>
-```
-
-成功例:
-
-```
-category再利用: id=3 「プログラミング」
-topic再利用: id=5 「Golang」
-quiz作成: id=12 「Golang基礎2」
-questions登録: 10問 (quizId=12)
-```
-
-## 5. 確認する（`status: draft` で投入した場合のみ公開作業が必要）
-
-1. `GET https://<本番URL>/api/quizzes/<id>/play` が10問返すことを確認
-2. 管理画面 `https://<本番URL>/#/admin` で目視確認
-3. `status: draft` で投入した場合のみ公開:
-
-```bash
-curl -u "xxx:xxx" -X PUT https://<本番URL>/api/quizzes/<id> \
-  -H 'Content-Type: application/json' -d '{"status":"published"}'
-```
+1. 管理画面で10問（4択5問＋穴埋め5問）が登録されたことを目視確認する
+2. `GET https://<本番URL>/api/quizzes/<id>/play` が10問返すことを確認する（ブラウザで開いて確認可）
+3. `status: draft` で投入した場合のみ、管理画面または `PUT /api/quizzes/:id` で `published` に変更して公開する
 
 ## トラブルシュート
 
 | 症状                             | 原因・対処                                                             |
 | -------------------------------- | ---------------------------------------------------------------------- |
-| 401 認証失敗                     | `BASIC_USER/PASS` が本番Secretsと不一致。`wrangler secret list` で確認 |
+| 401 認証失敗                     | Basic認証の値が不一致。Secrets設定を確認                               |
 | 同名quizが既にあります           | 同一topicに同名あり。新規タイトルにするか、既存は管理画面で編集        |
-| questions はちょうど10問必要です | 10問揃える（出題条件が10問固定のため）                                 |
+| questions はちょうど10問必要です | 10問揃える（内訳: 4択5問＋穴埋め5問。出題条件が10問固定のため）         |
+| 空欄マーカー関連のエラー         | `{{n}}` の書き損じ（全角括弧・スペース混入・飛び番等）か、`answers` との個数不一致。綴りが `cloze_text` であることも確認 |
 | quizは作成済み・問題登録失敗     | quizだけ作成済み。管理画面 `#/admin` から問題を追記する                |
 
 ## 注意
 
-- `seed.sql` を `--remote` で流さない（全データ削除される）
-- 認証情報はコミットしない。シェル履歴に残るのが嫌なら環境変数を `.env.local` 的に別管理する
+- コマンドから実行しない（コマンドから実行できる関連コードは削除済み）
+- `seed.sql` を本番に流さない（全データ削除される）
+- 認証情報はコミットしない

@@ -298,7 +298,7 @@ async function route(req: Request, env: Env): Promise<Response> {
   }
 
   // JSON一括取込: category/topic を find-or-create し、quiz + 10問を作成する。
-  // scripts/add-quiz.mjs と同等の処理を管理画面フォームから行うためのエンドポイント。
+  // 管理画面フォーム「JSONで一括登録」から行うためのエンドポイント。
   // 同名quizが同一topicに存在する場合は409で中断する (誤上書き防止)。
   if (path === "/api/quizzes/import" && method === "POST") {
     const body = await readJson(req);

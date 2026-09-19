@@ -251,7 +251,7 @@ export const mixedQuestionBatchSchema = z.object({
   questions: z.array(batchQuestionItemSchema, { message: "quizIdとquestions配列が必要です" }),
 });
 
-// JSON一括取込用 (data/quizzes/*.json と同形式。管理画面フォーム + scripts/add-quiz.mjs 共通)
+// JSON一括取込用 (data/quizzes/*.json と同形式。管理画面フォーム用)
 // 4択・穴埋め混在可 (要素ごとの questionType で判定する)
 export const quizImportSchema = z.object({
   category: titleSchema,
