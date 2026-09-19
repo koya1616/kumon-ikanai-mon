@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link, useNavigate, useParams } from "react-router";
+import { useNavigate, useParams } from "react-router";
 import { QUESTIONS_PER_QUIZ } from "../api";
 import { categoryStats, useTree } from "../tree";
 import { Crumbs, EmptyState, Icon, Ring, Skeletons, Stars } from "../ui";
@@ -173,7 +173,6 @@ const QuizRow = ({ quiz: q, onPlay }: { quiz: Quiz; onPlay: () => void }) => {
   const readyQ = q.questionCount >= QUESTIONS_PER_QUIZ;
   const perfect = !!sm?.attemptCount && sm.bestScore >= sm.bestTotal && sm.bestTotal > 0;
   const markCls = "quiz-mark" + (perfect ? " is-perfect" : sm?.attemptCount ? " is-tried" : "");
-  const tried = !!sm?.attemptCount;
   return (
     <div className="quiz-row-wrap">
       <button
@@ -210,15 +209,6 @@ const QuizRow = ({ quiz: q, onPlay }: { quiz: Quiz; onPlay: () => void }) => {
           </div>
         )}
       </button>
-      {readyQ && tried && (
-        <Link
-          className="btn btn-sm btn-ghost quiz-hist-link"
-          to={`/h/${q.id}`}
-          aria-label={`${q.title}の履歴を見る`}
-        >
-          履歴
-        </Link>
-      )}
     </div>
   );
 };
