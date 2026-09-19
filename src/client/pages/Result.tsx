@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router";
-import { api } from "../api";
+import { api, isCloze } from "../api";
 import type { AttemptRecord } from "../api";
 import { clearResume } from "../resume";
+import { ClozeStatement, formatClozeAnswers } from "../cloze";
 import { RichText } from "../rich";
 import { getSession } from "../session";
 import type { SessionAnswer } from "../session";
@@ -319,19 +320,39 @@ const ReviewCard = ({
         <BookmarkButton questionId={a.q.questionId} />
       </summary>
       <div className="review-body">
-        <div className={`review-your ${a.ok ? "is-ok" : "is-ng"}`}>
-          あなたの回答: {a.choice}.{" "}
-          <span className="review-inline rich">
-            <RichText text={a.q.choices[a.choice - 1]} />
-          </span>
-        </div>
-        {!a.ok && (
-          <div className="review-correct">
-            正解: {a.correct}.{" "}
-            <span className="review-inline rich">
-              <RichText text={a.q.choices[a.correct - 1]} />
-            </span>
-          </div>
+        {isCloze(a.q.questionType) ? (
+          <>
+            <div className={`review-your ${a.ok ? "is-ok" : "is-ng"}`}>
+              <ClozeStatement
+                statement={a.q.statement}
+                values={a.inputs}
+                status={a.details.map((d) => (d.correct ? "ok" : "ng"))}
+                answers={a.details.map((d) => d.answer)}
+              />
+            </div>
+            {!a.ok && (
+              <div className="review-correct">
+                正解: {formatClozeAnswers(a.details.map((d) => d.answer))}
+              </div>
+            )}
+          </>
+        ) : (
+          <>
+            <div className={`review-your ${a.ok ? "is-ok" : "is-ng"}`}>
+              あなたの回答: {a.choice}.{" "}
+              <span className="review-inline rich">
+                <RichText text={a.q.choices[a.choice - 1]} />
+              </span>
+            </div>
+            {!a.ok && (
+              <div className="review-correct">
+                正解: {a.correct}.{" "}
+                <span className="review-inline rich">
+                  <RichText text={a.q.choices[a.correct - 1]} />
+                </span>
+              </div>
+            )}
+          </>
         )}
         {a.exp && (
           <div className="exp rich">
@@ -356,6 +377,7 @@ const DrillCard = ({
 }) => {
   const qIndex = drill.order[drill.pos]!;
   const target = ses_answers[qIndex]!;
+  const targetCloze = isCloze(target.q.questionType);
   const picked = drill.picks[qIndex];
   const revealed = picked !== undefined;
   const correctCount = Object.entries(drill.picks).filter(
@@ -363,13 +385,35 @@ const DrillCard = ({
   ).length;
 
   const pick = (n: number) => {
-    if (revealed) return;
+    if (revealed || targetCloze) return;
     onChange({
       ...drill,
       picks: { ...drill.picks, [qIndex]: n },
       doneCount: drill.doneCount + 1,
     });
   };
+
+  // 穴埋めの見直しは手元採点 (Play回答時に受け取った正答と照合する)
+  const [drillInputs, setDrillInputs] = useState<string[]>(() =>
+    Array(target.details.length).fill(""),
+  );
+  const [drillOk, setDrillOk] = useState<boolean | null>(null);
+  useEffect(() => {
+    setDrillInputs(Array(target.details.length).fill(""));
+    setDrillOk(null);
+  }, [qIndex, target.details.length]);
+  const submitDrillCloze = () => {
+    if (drillOk !== null || drillInputs.some((s) => !s.trim())) return;
+    const ok = target.details.every((d, i) => drillInputs[i]!.trim() === d.answer);
+    setDrillOk(ok);
+    onChange({
+      ...drill,
+      picks: { ...drill.picks, [qIndex]: ok ? target.correct : -1 },
+      doneCount: drill.doneCount + 1,
+    });
+  };
+  const drillRevealed = targetCloze ? drillOk !== null : revealed;
+  const drillCorrect = targetCloze ? drillOk === true : picked === target.correct;
 
   const next = () => {
     if (drill.pos + 1 < drill.order.length) {
@@ -394,40 +438,87 @@ const DrillCard = ({
       <div className="drill-progress" aria-hidden="true">
         <i style={{ width: `${(drill.doneCount / drill.order.length) * 100}%` }} />
       </div>
-      <p className="q-statement rich">
-        <RichText text={target.q.statement} />
-      </p>
-      <div className="choices" role="group" aria-label="選択肢">
-        {target.q.choices.map((text, idx) => {
-          const n = idx + 1;
-          let cls = "choice";
-          if (revealed) {
-            if (n === target.correct) cls += " is-correct";
-            else if (n === picked) cls += " is-wrong";
-            else cls += " is-dim";
-          }
-          return (
+      {targetCloze ? (
+        <form
+          className="cloze-form"
+          onSubmit={(e) => {
+            e.preventDefault();
+            submitDrillCloze();
+          }}
+        >
+          <div className="q-statement rich cloze-statement">
+            <ClozeStatement
+              statement={target.q.statement}
+              values={drillInputs}
+              status={
+                drillRevealed
+                  ? target.details.map((d, i) => (drillInputs[i]!.trim() === d.answer ? "ok" : "ng"))
+                  : undefined
+              }
+              answers={drillRevealed ? target.details.map((d) => d.answer) : undefined}
+              editable={!drillRevealed}
+              autoFocusFirst={!drillRevealed}
+              onChange={(n, v) =>
+                setDrillInputs((prev) => {
+                  const nextInputs = [...prev];
+                  nextInputs[n - 1] = v;
+                  return nextInputs;
+                })
+              }
+            />
+          </div>
+          {!drillRevealed && (
             <button
-              key={n}
-              type="button"
-              className={cls}
-              disabled={revealed}
-              onClick={() => pick(n)}
+              type="submit"
+              className="btn btn-primary btn-block"
+              disabled={drillInputs.some((s) => !s.trim())}
             >
-              <span className="choice-key" aria-hidden="true">
-                {n}
-              </span>
-              <span className="choice-label rich">
-                <RichText text={text} />
-              </span>
+              回答する
             </button>
-          );
-        })}
-      </div>
-      {revealed && (
+          )}
+        </form>
+      ) : (
+        <>
+          <p className="q-statement rich">
+            <RichText text={target.q.statement} />
+          </p>
+          <div className="choices" role="group" aria-label="選択肢">
+            {target.q.choices.map((text, idx) => {
+              const n = idx + 1;
+              let cls = "choice";
+              if (revealed) {
+                if (n === target.correct) cls += " is-correct";
+                else if (n === picked) cls += " is-wrong";
+                else cls += " is-dim";
+              }
+              return (
+                <button
+                  key={n}
+                  type="button"
+                  className={cls}
+                  disabled={revealed}
+                  onClick={() => pick(n)}
+                >
+                  <span className="choice-key" aria-hidden="true">
+                    {n}
+                  </span>
+                  <span className="choice-label rich">
+                    <RichText text={text} />
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </>
+      )}
+      {(targetCloze ? drillRevealed : revealed) && (
         <div className="drill-feedback">
-          <p className={picked === target.correct ? "is-good" : "is-bad"}>
-            {picked === target.correct ? "正解！よく直せたね" : `正解は ${target.correct} 番`}
+          <p className={drillCorrect ? "is-good" : "is-bad"}>
+            {drillCorrect
+              ? "正解！よく直せたね"
+              : targetCloze
+                ? `正解は ${formatClozeAnswers(target.details.map((d) => d.answer))}`
+                : `正解は ${target.correct} 番`}
             {" · "}
             現在 {correctCount} / {drill.doneCount} 正解
           </p>

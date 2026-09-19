@@ -82,8 +82,49 @@ function validateInput(raw) {
       `questions はちょうど${QUESTIONS_PER_QUIZ}問必要です (現在${Array.isArray(questions) ? questions.length : "非配列"}問)`,
     );
   }
+  const explanationOf = (q) =>
+    typeof q.explanation === "string"
+      ? q.explanation.trim()
+      : q.explanation == null
+        ? ""
+        : String(q.explanation).trim();
+
   const normalized = questions.map((q, i) => {
     const n = i + 1;
+    // 穴埋め (記述式): { questionType: "cloze_text", statement ({{1}}..{{N}}), answers: [...], explanation? }
+    if (q?.questionType === "cloze_text") {
+      if (typeof q.statement !== "string" || !q.statement.trim()) {
+        throw new Error(`questions[${n}] statementは必須です`);
+      }
+      if (!Array.isArray(q.answers) || q.answers.length < 1 || q.answers.length > 20) {
+        throw new Error(`questions[${n}] answersは1-20個の配列が必要です`);
+      }
+      const answers = q.answers.map((a, k) => {
+        if (typeof a !== "string" || !a.trim() || a.trim().length > 100) {
+          throw new Error(`questions[${n}] answers[${k + 1}]は1-100文字の文字列が必須です`);
+        }
+        return a.trim();
+      });
+      const markers = [
+        ...new Set(
+          [...q.statement.matchAll(/\{\{(\d+)\}\}/g)].map((m) => Number(m[1])),
+        ),
+      ].sort((a, b) => a - b);
+      if (!markers.length) {
+        throw new Error(`questions[${n}] 問題文に{{1}}のような空欄マーカーが必要です`);
+      }
+      if (markers.length !== answers.length || markers.some((m, k) => m !== k + 1)) {
+        throw new Error(
+          `questions[${n}] 空欄マーカーは{{1}}からの連番かつanswersと同数にしてください`,
+        );
+      }
+      return {
+        questionType: "cloze_text",
+        statement: q.statement.trim(),
+        answers,
+        explanation: explanationOf(q),
+      };
+    }
     for (const k of ["statement", "choice1", "choice2", "choice3", "choice4"]) {
       if (typeof q?.[k] !== "string" || !q[k].trim())
         throw new Error(`questions[${n}] ${k}は必須です`);
@@ -99,12 +140,7 @@ function validateInput(raw) {
       choice3: q.choice3.trim(),
       choice4: q.choice4.trim(),
       answer,
-      explanation:
-        typeof q.explanation === "string"
-          ? q.explanation.trim()
-          : q.explanation == null
-            ? ""
-            : String(q.explanation).trim(),
+      explanation: explanationOf(q),
     };
   });
 

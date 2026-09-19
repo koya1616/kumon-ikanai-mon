@@ -3537,3 +3537,71 @@
     transform: none;
   }
 }
+
+/* ===== 穴埋め (cloze_text) ===== */
+.cloze-statement {
+  line-height: 2.4;
+}
+.cloze-blank {
+  display: inline-block;
+  vertical-align: baseline;
+  font: inherit;
+  color: inherit;
+  background: var(--card, #fff);
+  border: 1px solid var(--line, #d8d2c7);
+  border-radius: 8px;
+  padding: 2px 8px;
+  margin: 0 2px;
+}
+input.cloze-blank:focus {
+  outline: 2px solid var(--shu);
+  outline-offset: 1px;
+  border-color: var(--shu);
+}
+.cloze-blank.is-ok {
+  border-color: var(--moegi);
+  background: var(--moegi-soft);
+}
+.cloze-blank.is-ng {
+  border-color: var(--shu);
+  background: var(--shu-soft);
+}
+.cloze-blank.is-readonly {
+  border-style: dashed;
+}
+.cloze-answer {
+  font-size: 12px;
+  color: var(--moegi);
+  margin-left: 4px;
+  white-space: nowrap;
+}
+.cloze-form {
+  display: grid;
+  gap: 12px;
+}
+/* ===== 問題形式セグメント (管理エディタ) ===== */
+.seg {
+  display: inline-flex;
+  border: 1px solid var(--line, #d8d2c7);
+  border-radius: 999px;
+  overflow: hidden;
+}
+.seg-btn {
+  border: 0;
+  background: transparent;
+  padding: 4px 12px;
+  font-size: 13px;
+  cursor: pointer;
+  color: inherit;
+}
+.seg-btn.is-active {
+  background: var(--ink, #333);
+  color: #fff;
+}
+.ans.is-static {
+  cursor: default;
+}
+.warn {
+  color: var(--shu);
+  font-size: 13px;
+}

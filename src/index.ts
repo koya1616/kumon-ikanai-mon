@@ -4,13 +4,17 @@ import { html } from "./view";
 import { QUESTIONS_PER_QUIZ } from "./domain";
 import {
   answerBodySchema,
+  batchEnvelopeSchema,
   bookmarkBodySchema,
+  clozeQuestionCreateSchema,
+  clozeQuestionSchema,
   idParamSchema,
-  questionBatchSchema,
+  importEnvelopeSchema,
+  isClozePayload,
+  normalizeImportQuestion,
   questionCreateSchema,
   questionSchema,
   quizBodySchema,
-  quizImportSchema,
   quizPatchSchema,
   reviewAnswerBodySchema,
   topicBodySchema,
@@ -299,9 +303,15 @@ async function route(req: Request, env: Env): Promise<Response> {
   if (path === "/api/quizzes/import" && method === "POST") {
     const body = await readJson(req);
     if ("res" in body) return body.res;
-    const v = validated(quizImportSchema.safeParse(body.value));
+    const v = validated(importEnvelopeSchema.safeParse(body.value));
     if ("res" in v) return v.res;
-    const input = v.data;
+    let normalized: ReturnType<typeof normalizeImportQuestion>[];
+    try {
+      normalized = v.data.questions.map((q, i) => normalizeImportQuestion(q, i));
+    } catch (e) {
+      return json({ error: (e as Error).message }, 400);
+    }
+    const input = { ...v.data, questions: normalized };
 
     // 1. category find-or-create
     const categories = await repo.listCategories(db);
@@ -348,11 +358,7 @@ async function route(req: Request, env: Env): Promise<Response> {
       return json({ error: "同名のquizが既にあります / topicが存在しません" }, 409);
     }
     try {
-      const count = await repo.replaceQuestions(
-        db,
-        quizId,
-        input.questions.map((q) => ({ ...q, explanation: q.explanation ?? "" })),
-      );
+      const count = await repo.replaceQuestions(db, quizId, input.questions);
       return json({ categoryId, topicId, quizId, count }, 201);
     } catch (e) {
       // quizだけ作成済みの状態。管理画面から問題を追記できるようidを返す
@@ -432,6 +438,18 @@ async function route(req: Request, env: Env): Promise<Response> {
     if (method === "POST") {
       const body = await readJson(req);
       if ("res" in body) return body.res;
+      if (isClozePayload(body.value)) {
+        const v = validated(clozeQuestionCreateSchema.safeParse(body.value));
+        if ("res" in v) return v.res;
+        const { quizId, ...q } = v.data;
+        const id = await repo.createClozeQuestion(db, quizId, {
+          questionType: "cloze_text",
+          statement: q.statement,
+          answers: q.answers,
+          explanation: q.explanation ?? "",
+        });
+        return json({ id }, 201);
+      }
       const v = validated(questionCreateSchema.safeParse(body.value));
       if ("res" in v) return v.res;
       const { quizId, ...q } = v.data;
@@ -444,17 +462,20 @@ async function route(req: Request, env: Env): Promise<Response> {
   }
 
   // 10問保存: versioning方式 (履歴があっても新version発行で保存可。問題数削減のみ履歴ありは不可)
+  // 4択・穴埋め混在可 (要素の questionType で判別する)
   if (path === "/api/questions/batch" && method === "POST") {
     const body = await readJson(req);
     if ("res" in body) return body.res;
-    const v = validated(questionBatchSchema.safeParse(body.value));
+    const v = validated(batchEnvelopeSchema.safeParse(body.value));
     if ("res" in v) return v.res;
+    let normalized: ReturnType<typeof normalizeImportQuestion>[];
     try {
-      const count = await repo.replaceQuestions(
-        db,
-        v.data.quizId,
-        v.data.questions.map((q) => ({ ...q, explanation: q.explanation ?? "" })),
-      );
+      normalized = v.data.questions.map((q, i) => normalizeImportQuestion(q, i));
+    } catch (e) {
+      return json({ error: (e as Error).message }, 400);
+    }
+    try {
+      const count = await repo.replaceQuestions(db, v.data.quizId, normalized);
       return json({ ok: true, count });
     } catch (e) {
       return json({ error: (e as Error).message }, 400);
@@ -469,14 +490,25 @@ async function route(req: Request, env: Env): Promise<Response> {
       if (method === "PUT") {
         const body = await readJson(req);
         if ("res" in body) return body.res;
-        const v = validated(questionSchema.safeParse(body.value));
-        if ("res" in v) return v.res;
         // versioningのため履歴があっても編集可 (= 新しいversionを発行する)
         try {
-          await repo.updateQuestion(db, questionId, {
-            ...v.data,
-            explanation: v.data.explanation ?? "",
-          });
+          if (isClozePayload(body.value)) {
+            const v = validated(clozeQuestionSchema.safeParse(body.value));
+            if ("res" in v) return v.res;
+            await repo.updateClozeQuestion(db, questionId, {
+              questionType: "cloze_text",
+              statement: v.data.statement,
+              answers: v.data.answers,
+              explanation: v.data.explanation ?? "",
+            });
+          } else {
+            const v = validated(questionSchema.safeParse(body.value));
+            if ("res" in v) return v.res;
+            await repo.updateQuestion(db, questionId, {
+              ...v.data,
+              explanation: v.data.explanation ?? "",
+            });
+          }
         } catch (e) {
           return json({ error: (e as Error).message }, 404);
         }
@@ -674,7 +706,10 @@ async function route(req: Request, env: Env): Promise<Response> {
       if ("res" in v) return v.res;
       try {
         return json(
-          await repo.recordAnswer(db, attemptId, v.data.attemptQuestionId, v.data.choice),
+          await repo.recordAnswer(db, attemptId, v.data.attemptQuestionId, {
+            choice: v.data.choice,
+            answers: v.data.answers,
+          }),
         );
       } catch (e) {
         const message = (e as Error).message;

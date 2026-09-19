@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router";
-import { api } from "../api";
-import type { AttemptState, PlayQuestion, QuizMeta } from "../api";
+import { api, isCloze } from "../api";
+import type { AnswerResult, AttemptState, PlayQuestion, QuizMeta } from "../api";
+import { ClozeStatement, formatClozeAnswers, parseClozeBlanks } from "../cloze";
 import { useDialog } from "../dialog";
 import {
   applyChoiceOrder,
@@ -104,6 +105,8 @@ export const Play = () => {
             ok: a.correct,
             correct: toDisplayedPos(q, a.correctAnswer),
             exp: a.explanation ?? "",
+            inputs: a.answers ?? [],
+            details: a.details ?? [],
           });
         }
         setPhase({
@@ -275,6 +278,13 @@ const PlayingScreen = ({ play, onChange }: { play: LivePlay; onChange: (p: LiveP
   const score = play.answers.filter((a) => a.ok).length;
   const answeredCount = play.answers.length;
   const last = play.index + 1 >= play.questions.length;
+  const cloze = isCloze(q.questionType);
+  const blankCount = cloze ? (q.blankCount || parseClozeBlanks(q.statement).length) : 0;
+  const [inputs, setInputs] = useState<string[]>(() => Array(blankCount).fill(""));
+  useEffect(() => {
+    setInputs(Array(blankCount).fill(""));
+  }, [q.attemptQuestionId, blankCount]);
+  const submittable = !cloze || inputs.every((s) => s.trim());
 
   useEffect(() => {
     window.scrollTo(0, 0);
@@ -303,10 +313,10 @@ const PlayingScreen = ({ play, onChange }: { play: LivePlay; onChange: (p: LiveP
       onChange(sending);
       // 表示順→元の番号に読み替えて送信する (サーバは元のpositionで採点する)
       const original = toOriginalPos(q, displayed);
-      api<{ correct: boolean; correctAnswer: number; explanation: string }>(
-        `/api/attempts/${play.attemptId}/answers`,
-        { method: "POST", body: { attemptQuestionId: q.attemptQuestionId, choice: original } },
-      )
+      api<AnswerResult>(`/api/attempts/${play.attemptId}/answers`, {
+        method: "POST",
+        body: { attemptQuestionId: q.attemptQuestionId, choice: original },
+      })
         .then((res) => {
           onChange({
             ...sending,
@@ -319,6 +329,8 @@ const PlayingScreen = ({ play, onChange }: { play: LivePlay; onChange: (p: LiveP
                 ok: !!res.correct,
                 correct: toDisplayedPos(q, res.correctAnswer),
                 exp: res.explanation ?? "",
+                inputs: [],
+                details: res.details ?? [],
               },
             ],
           });
@@ -330,6 +342,39 @@ const PlayingScreen = ({ play, onChange }: { play: LivePlay; onChange: (p: LiveP
     },
     [play, q, onChange, toast],
   );
+
+  const answerCloze = useCallback(() => {
+    if (play.answers.length > play.index || play.busy || !submittable) return;
+    const sending = { ...play, busy: true };
+    onChange(sending);
+    const sent = [...inputs];
+    api<AnswerResult>(`/api/attempts/${play.attemptId}/answers`, {
+      method: "POST",
+      body: { attemptQuestionId: q.attemptQuestionId, answers: sent },
+    })
+      .then((res) => {
+        onChange({
+          ...sending,
+          busy: false,
+          answers: [
+            ...sending.answers,
+            {
+              q,
+              choice: 0,
+              ok: !!res.correct,
+              correct: 0,
+              exp: res.explanation ?? "",
+              inputs: sent,
+              details: res.details ?? [],
+            },
+          ],
+        });
+      })
+      .catch((e: Error) => {
+        onChange({ ...sending, busy: false });
+        toast(e.message || "回答を送信できませんでした", "ng");
+      });
+  }, [play, q, inputs, submittable, onChange, toast]);
 
   // 次へボタンを回答後にフォーカス (Enter ですぐ進める)
   useEffect(() => {
@@ -356,10 +401,13 @@ const PlayingScreen = ({ play, onChange }: { play: LivePlay; onChange: (p: LiveP
       const dlg = document.getElementById("dialog") as HTMLDialogElement | null;
       if (dlg?.open) return;
       if (e.key >= "1" && e.key <= "4" && !revealed && !play.busy) {
-        const idx = Number(e.key) - 1;
-        if (play.questions[play.index]?.choices[idx] !== undefined) {
-          e.preventDefault();
-          answer(Number(e.key));
+        const cur = play.questions[play.index];
+        if (cur && !isCloze(cur.questionType)) {
+          const idx = Number(e.key) - 1;
+          if (cur.choices[idx] !== undefined) {
+            e.preventDefault();
+            answer(Number(e.key));
+          }
         }
       } else if ((e.key === "Enter" || e.key === " " || e.key === "ArrowRight") && revealed) {
         e.preventDefault();
@@ -426,9 +474,11 @@ const PlayingScreen = ({ play, onChange }: { play: LivePlay; onChange: (p: LiveP
             <div className="q-num">
               第 {play.index + 1} 問 <BookmarkButton questionId={q.questionId} />
             </div>
-            <h1 className="q-statement rich">
-              <RichText text={q.statement} />
-            </h1>
+            {!cloze && (
+              <h1 className="q-statement rich">
+                <RichText text={q.statement} />
+              </h1>
+            )}
             <div
               className={"stamp" + (result ? ` show ${result.ok ? "is-ok" : "is-ng"}` : "")}
               aria-hidden="true"
@@ -436,47 +486,96 @@ const PlayingScreen = ({ play, onChange }: { play: LivePlay; onChange: (p: LiveP
               {result ? (result.ok ? "○" : "×") : ""}
             </div>
           </div>
-          <div className="choices" role="group" aria-label="選択肢">
-            {q.choices.map((text, i) => {
-              const n = i + 1;
-              let cls = "choice";
-              if (result) {
-                if (n === result.correct) cls += " is-correct";
-                else if (n === result.choice) cls += " is-wrong";
-                else cls += " is-dim";
-              }
-              return (
+          {cloze ? (
+            <form
+              className="cloze-form"
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (revealed) next();
+                else answerCloze();
+              }}
+            >
+              <div className="q-statement rich cloze-statement">
+                <ClozeStatement
+                  statement={q.statement}
+                  values={revealed ? (result?.inputs ?? inputs) : inputs}
+                  status={
+                    revealed
+                      ? (result?.details ?? []).map((d) => (d.correct ? "ok" : "ng"))
+                      : undefined
+                  }
+                  answers={revealed ? (result?.details ?? []).map((d) => d.answer) : undefined}
+                  editable={!revealed}
+                  disabled={play.busy}
+                  autoFocusFirst={!revealed}
+                  onChange={(n, v) =>
+                    setInputs((prev) => {
+                      const nextInputs = [...prev];
+                      while (nextInputs.length < blankCount) nextInputs.push("");
+                      nextInputs[n - 1] = v;
+                      return nextInputs;
+                    })
+                  }
+                />
+              </div>
+              {!revealed && (
                 <button
-                  key={n}
-                  type="button"
-                  className={cls}
-                  disabled={revealed || play.busy}
-                  onClick={() => answer(n)}
+                  type="submit"
+                  className="btn btn-primary btn-block"
+                  disabled={!submittable || play.busy}
                 >
-                  <span className="choice-key" aria-hidden="true">
-                    {n}
-                  </span>
-                  <span className="choice-label rich">
-                    <RichText text={text} />
-                  </span>
-                  {result && n === result.correct && (
-                    <span className="choice-mark" aria-hidden="true">
-                      ○
-                    </span>
-                  )}
-                  {result && n === result.choice && n !== result.correct && (
-                    <span className="choice-mark" aria-hidden="true">
-                      ×
-                    </span>
-                  )}
+                  回答する
                 </button>
-              );
-            })}
-          </div>
-          <p className="muted" style={{ textAlign: "center" }}>
-            <span className="kbd">1</span> – <span className="kbd">4</span> で回答 ·{" "}
-            <span className="kbd">Enter</span> で次へ
-          </p>
+              )}
+              <p className="muted" style={{ textAlign: "center" }}>
+                全{blankCount}個の空欄を埋めて回答 · <span className="kbd">Enter</span> で次へ
+              </p>
+            </form>
+          ) : (
+            <>
+              <div className="choices" role="group" aria-label="選択肢">
+                {q.choices.map((text, i) => {
+                  const n = i + 1;
+                  let cls = "choice";
+                  if (result) {
+                    if (n === result.correct) cls += " is-correct";
+                    else if (n === result.choice) cls += " is-wrong";
+                    else cls += " is-dim";
+                  }
+                  return (
+                    <button
+                      key={n}
+                      type="button"
+                      className={cls}
+                      disabled={revealed || play.busy}
+                      onClick={() => answer(n)}
+                    >
+                      <span className="choice-key" aria-hidden="true">
+                        {n}
+                      </span>
+                      <span className="choice-label rich">
+                        <RichText text={text} />
+                      </span>
+                      {result && n === result.correct && (
+                        <span className="choice-mark" aria-hidden="true">
+                          ○
+                        </span>
+                      )}
+                      {result && n === result.choice && n !== result.correct && (
+                        <span className="choice-mark" aria-hidden="true">
+                          ×
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+              <p className="muted" style={{ textAlign: "center" }}>
+                <span className="kbd">1</span> – <span className="kbd">4</span> で回答 ·{" "}
+                <span className="kbd">Enter</span> で次へ
+              </p>
+            </>
+          )}
         </div>
         <div className={`sheet${result ? " is-open" : ""}${expCollapsed ? " is-collapsed" : ""}`}>
           {result && (
@@ -485,7 +584,13 @@ const PlayingScreen = ({ play, onChange }: { play: LivePlay; onChange: (p: LiveP
                 <span className="sheet-badge" aria-hidden="true">
                   {result.ok ? "○" : "×"}
                 </span>
-                <span>{result.ok ? "正解！" : `不正解… 正解は ${result.correct} 番`}</span>
+                <span>
+                  {result.ok
+                    ? "正解！"
+                    : isCloze(result.q.questionType)
+                      ? `不正解… 正解は ${formatClozeAnswers(result.details.map((d) => d.answer))}`
+                      : `不正解… 正解は ${result.correct} 番`}
+                </span>
                 <span className="sheet-score">
                   現在 {score} / {play.index + 1} 正解
                 </span>

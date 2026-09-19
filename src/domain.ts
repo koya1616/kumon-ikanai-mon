@@ -20,6 +20,13 @@ export const REVIEW_CLEAR_STREAK = 2;
 export type QuizStatus = "draft" | "published" | "archived";
 export const QUIZ_STATUSES: QuizStatus[] = ["draft", "published", "archived"];
 
+export type QuestionType = "single_choice" | "cloze_text";
+export const QUESTION_TYPES: QuestionType[] = ["single_choice", "cloze_text"];
+/** 穴埋め1問あたりの最大空欄数 (誤爆・巨大入力の防止) */
+export const CLOZE_MAX_BLANKS = 20;
+/** 空欄正答・回答の最大文字数 */
+export const CLOZE_ANSWER_MAX_LENGTH = 100;
+
 export interface Category {
   id: number;
   title: string;
@@ -49,15 +56,23 @@ export interface Quiz {
   questionCount: number;
 }
 
+export interface ClozeBlank {
+  index: number; // 1始まり。statement中の {{n}} に対応
+  answer: string;
+}
+
 export interface Question {
   id: number;
   quizId: number;
   currentVersionId: number | null;
   version: number;
   questionVersionId: number;
+  questionType: QuestionType;
   statement: string;
   choices: string[];
-  answer: number; // 1始まりのposition
+  answer: number; // 1始まりのposition (clozeでは0)
+  /** cloze_text の正答一覧 (single_choiceでは空) */
+  blanks: ClozeBlank[];
   explanation: string;
 }
 
@@ -67,8 +82,19 @@ export interface PlayQuestion {
   questionVersionId: number;
   attemptQuestionId?: number;
   position?: number;
+  questionType: QuestionType;
   statement: string;
   choices: string[];
+  /** cloze_text の空欄数 (single_choiceでは0) */
+  blankCount: number;
+}
+
+/** 空欄単位の採点明細 */
+export interface ClozeDetail {
+  blank: number;
+  correct: boolean;
+  /** 正答 (回答後に開示する) */
+  answer: string;
 }
 
 export interface AttemptQuestion {
@@ -153,7 +179,80 @@ export const questionBatchSchema = z.object({
   questions: z.array(questionSchema, { message: "quizIdとquestions配列が必要です" }),
 });
 
+/** statement中の {{n}} マーカーを昇順・重複除去で返す */
+export function parseClozeMarkers(statement: string): number[] {
+  const out: number[] = [];
+  const re = /\{\{(\d+)\}\}/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(statement)) !== null) {
+    const n = Number(m[1]);
+    if (Number.isInteger(n) && n >= 1 && !out.includes(n)) out.push(n);
+  }
+  return out.sort((a, b) => a - b);
+}
+
+/** マーカー検証: 1〜Nの連番ちょうどN個であること。NG時はメッセージ、OK時はnull */
+export function validateClozeMarkers(statement: string): string | null {
+  const markers = parseClozeMarkers(statement);
+  if (!markers.length) return "問題文に{{1}}のような空欄マーカーが必要です";
+  if (markers.length > CLOZE_MAX_BLANKS) {
+    return `空欄は最大${CLOZE_MAX_BLANKS}個です`;
+  }
+  for (let i = 0; i < markers.length; i++) {
+    if (markers[i] !== i + 1) return "空欄マーカーは{{1}}から飛び番なく連番にしてください";
+  }
+  return null;
+}
+
+const clozeAnswerString = z
+  .unknown()
+  .refine((v): v is string => typeof v === "string" && v.trim().length > 0, {
+    message: "空欄の正答はすべて必須です",
+  })
+  .transform((s) => s.trim())
+  .pipe(z.string().max(CLOZE_ANSWER_MAX_LENGTH));
+
+export const clozeQuestionSchema = z
+  .object({
+    questionType: z.literal("cloze_text"),
+    statement: nonEmptyTrimmed("statement").transform((s) => s.trim()),
+    answers: z
+      .array(clozeAnswerString, { message: "answers配列が必要です" })
+      .min(1, { message: "answers配列が必要です" })
+      .max(CLOZE_MAX_BLANKS),
+    explanation: z
+      .unknown()
+      .optional()
+      .transform((v) => (typeof v === "string" ? v.trim() : v == null ? "" : String(v).trim())),
+  })
+  .superRefine((v, ctx) => {
+    const markerError = validateClozeMarkers(v.statement);
+    if (markerError) {
+      ctx.addIssue({ code: "custom", message: markerError });
+      return;
+    }
+    if (parseClozeMarkers(v.statement).length !== v.answers.length) {
+      ctx.addIssue({
+        code: "custom",
+        message: "空欄マーカーの個数とanswersの個数を一致させてください",
+      });
+    }
+  });
+
+export const clozeQuestionCreateSchema = clozeQuestionSchema.extend({
+  quizId: z.coerce.number().int().positive({ message: "quizIdが必要です" }),
+});
+
+/** batch用: 1要素が4択か穴埋めか (questionTypeの有無で判定する) */
+export const batchQuestionItemSchema = z.union([questionSchema, clozeQuestionSchema]);
+
+export const mixedQuestionBatchSchema = z.object({
+  quizId: z.coerce.number().int().positive({ message: "quizIdとquestions配列が必要です" }),
+  questions: z.array(batchQuestionItemSchema, { message: "quizIdとquestions配列が必要です" }),
+});
+
 // JSON一括取込用 (data/quizzes/*.json と同形式。管理画面フォーム + scripts/add-quiz.mjs 共通)
+// 4択・穴埋め混在可 (要素ごとの questionType で判定する)
 export const quizImportSchema = z.object({
   category: titleSchema,
   topic: titleSchema,
@@ -163,9 +262,67 @@ export const quizImportSchema = z.object({
     status: quizStatusSchema.default("published"),
   }),
   questions: z
-    .array(questionSchema, { message: "questionsはちょうど10問必要です" })
+    .array(batchQuestionItemSchema, { message: "questionsはちょうど10問必要です" })
     .length(QUESTIONS_PER_QUIZ, { message: `questionsはちょうど${QUESTIONS_PER_QUIZ}問必要です` }),
 });
+
+/** batch・取込の外枠 (要素は normalizeImportQuestion で1件ずつ検証する) */
+export const batchEnvelopeSchema = z.object({
+  quizId: z.coerce.number().int().positive({ message: "quizIdとquestions配列が必要です" }),
+  questions: z.array(z.unknown(), { message: "quizIdとquestions配列が必要です" }),
+});
+
+export const importEnvelopeSchema = z.object({
+  category: titleSchema,
+  topic: titleSchema,
+  quiz: z.object({
+    title: titleSchema,
+    difficulty: difficultySchema.default(1),
+    status: quizStatusSchema.default("published"),
+  }),
+  questions: z
+    .array(z.unknown(), { message: "questionsはちょうど10問必要です" })
+    .length(QUESTIONS_PER_QUIZ, { message: `questionsはちょうど${QUESTIONS_PER_QUIZ}問必要です` }),
+});
+
+/** 単問POST/PUTの分岐用 */
+export function isClozePayload(raw: unknown): boolean {
+  return (
+    raw !== null &&
+    typeof raw === "object" &&
+    (raw as { questionType?: unknown }).questionType === "cloze_text"
+  );
+}
+
+/** 取込・batch要素の正規化 (4択か穴埋めかを判別して検証する) */
+export function normalizeImportQuestion(
+  raw: unknown,
+  index: number,
+): (
+  | { questionType?: "single_choice"; statement: string; choice1: string; choice2: string; choice3: string; choice4: string; answer: number; explanation: string }
+  | { questionType: "cloze_text"; statement: string; answers: string[]; explanation: string }
+) {
+  const n = index + 1;
+  if (isClozePayload(raw)) {
+    const parsed = clozeQuestionSchema.safeParse(raw);
+    if (!parsed.success) {
+      throw new Error(
+        `questions[${n}]: ${parsed.error.issues[0]?.message ?? "入力が不正です"}`,
+      );
+    }
+    return {
+      questionType: "cloze_text",
+      statement: parsed.data.statement,
+      answers: parsed.data.answers,
+      explanation: parsed.data.explanation ?? "",
+    };
+  }
+  const parsed = questionSchema.safeParse(raw);
+  if (!parsed.success) {
+    throw new Error(`questions[${n}]: ${parsed.error.issues[0]?.message ?? "入力が不正です"}`);
+  }
+  return { ...parsed.data, explanation: parsed.data.explanation ?? "" };
+}
 
 export const answerBodySchema = z.object({
   attemptQuestionId: z.coerce
@@ -176,7 +333,9 @@ export const answerBodySchema = z.object({
     .number()
     .int()
     .min(1, { message: "attemptQuestionIdとchoiceが必要です" })
-    .max(CHOICE_COUNT, { message: `choiceは1-${CHOICE_COUNT}で指定してください` }),
+    .max(CHOICE_COUNT, { message: `choiceは1-${CHOICE_COUNT}で指定してください` })
+    .optional(),
+  answers: z.array(z.string().max(CLOZE_ANSWER_MAX_LENGTH)).max(CLOZE_MAX_BLANKS).optional(),
 });
 
 /** 復習回答用 (練習扱い・attempts系に影響しない)。採点はサーバ側で行う */
@@ -189,7 +348,9 @@ export const reviewAnswerBodySchema = z.object({
     .number()
     .int()
     .min(1, { message: "questionVersionIdとchoiceが必要です" })
-    .max(CHOICE_COUNT, { message: `choiceは1-${CHOICE_COUNT}で指定してください` }),
+    .max(CHOICE_COUNT, { message: `choiceは1-${CHOICE_COUNT}で指定してください` })
+    .optional(),
+  answers: z.array(z.string().max(CLOZE_ANSWER_MAX_LENGTH)).max(CLOZE_MAX_BLANKS).optional(),
   sessionId: z.string().trim().min(1).max(64).optional(),
 });
 
@@ -260,12 +421,16 @@ export interface AttemptDetailItem {
   attemptQuestionId: number;
   questionId: number;
   questionVersionId: number;
+  questionType: QuestionType;
   statement: string;
   choices: string[];
   picked: number | null;
   pickedText: string | null;
   correctAnswer: number;
   correct: boolean | null;
+  /** cloze_text の入力・正答 (single_choiceでは空配列) */
+  pickedAnswers: string[];
+  correctAnswers: string[];
   explanation: string;
 }
 
@@ -296,9 +461,12 @@ export interface BookmarkItem {
   questionVersionId: number;
   quizId: number;
   quizTitle: string;
+  questionType: QuestionType;
   statement: string;
   choices: string[];
   answer: number;
+  /** cloze_text の正答一覧 (single_choiceでは空配列) */
+  correctAnswers: string[];
   explanation: string;
   bookmarkedAt: string;
 }
@@ -313,10 +481,21 @@ export interface ReviewAnswerResult {
   correct: boolean;
   correctAnswer: number;
   explanation: string;
+  /** cloze_text の空欄単位明細 (single_choiceでは空配列) */
+  details: ClozeDetail[];
   /** 直近の連続正解数 (今回を含む。本番+復習の統合時系列) */
   streak: number;
   /** streak >= REVIEW_CLEAR_STREAK か */
   resolved: boolean;
   /** 解消までの残り正解数 */
   remaining: number;
+}
+
+/** POST /api/attempts/:id/answers の返却形 */
+export interface AnswerResult {
+  correct: boolean;
+  correctAnswer: number;
+  explanation: string;
+  /** cloze_text の空欄単位明細 (single_choiceでは空配列) */
+  details: ClozeDetail[];
 }

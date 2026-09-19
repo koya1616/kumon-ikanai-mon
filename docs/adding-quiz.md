@@ -40,7 +40,7 @@ cp data/quizzes/example.json data/quizzes/my-quiz.json
 
 ルール:
 
-- `questions` はちょうど10問
+- `questions` はちょうど10問（4択・穴埋め混在可。穴埋め形式は `docs/adding-cloze-quiz.md` 参照）
 - `choice1〜4` はすべて必須、`answer` は1〜4
 - `quiz.status` 省略時は `published`（登録後すぐ出題される）。下書きにしたい場合のみ `"draft"` を明示する
 - 同名 `category` / `topic` は再利用される。同名 `quiz` が同じtopicに存在すると中断（誤上書き防止）

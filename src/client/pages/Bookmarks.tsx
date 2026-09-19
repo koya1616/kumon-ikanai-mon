@@ -3,8 +3,9 @@
 // GET /api/bookmarks はサーバ側でランダム順に返すため、シャッフル = 再取得。
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router";
-import { api } from "../api";
+import { api, isCloze } from "../api";
 import type { BookmarkItem } from "../api";
+import { ClozeStatement, formatClozeAnswers } from "../cloze";
 import { RichText } from "../rich";
 import { EmptyState, Icon, Skeletons } from "../ui";
 
@@ -66,7 +67,8 @@ export const Bookmarks = () => {
       return (
         it.statement.toLowerCase().includes(q) ||
         it.quizTitle.toLowerCase().includes(q) ||
-        it.choices.some((c) => c.toLowerCase().includes(q))
+        it.choices.some((c) => c.toLowerCase().includes(q)) ||
+        it.correctAnswers.some((c) => c.toLowerCase().includes(q))
       );
     });
   }, [state, kw, quizId]);
@@ -205,38 +207,54 @@ const BookmarkCard = ({
           ★
         </button>
       </div>
-      <p className="bm-statement rich">
-        <RichText text={it.statement} />
-      </p>
-      <div className="bm-choices" role="list" aria-label="選択肢">
-        {it.choices.map((c, i) => {
-          const n = i + 1;
-          const ok = n === it.answer;
-          return (
-            <div
-              key={n}
-              className={`bm-choice${ok ? " is-correct" : ""}`}
-              role="listitem"
-              aria-label={`${n}番${revealed && ok ? "（正解）" : ""}`}
-            >
-              <span className="bm-key" aria-hidden="true">
-                {n}
-              </span>
-              <span className="choice-label rich">
-                <RichText text={c} />
-              </span>
-              {revealed && ok && (
-                <span className="bm-mark" aria-hidden="true">
-                  ○
-                </span>
-              )}
-            </div>
-          );
-        })}
-      </div>
+      {isCloze(it.questionType) ? (
+        <div className="bm-statement rich cloze-statement">
+          <ClozeStatement
+            statement={it.statement}
+            values={revealed ? it.correctAnswers : Array(it.correctAnswers.length).fill("")}
+            status={revealed ? it.correctAnswers.map(() => "ok" as const) : undefined}
+          />
+        </div>
+      ) : (
+        <>
+          <p className="bm-statement rich">
+            <RichText text={it.statement} />
+          </p>
+          <div className="bm-choices" role="list" aria-label="選択肢">
+            {it.choices.map((c, i) => {
+              const n = i + 1;
+              const ok = n === it.answer;
+              return (
+                <div
+                  key={n}
+                  className={`bm-choice${ok ? " is-correct" : ""}`}
+                  role="listitem"
+                  aria-label={`${n}番${revealed && ok ? "（正解）" : ""}`}
+                >
+                  <span className="bm-key" aria-hidden="true">
+                    {n}
+                  </span>
+                  <span className="choice-label rich">
+                    <RichText text={c} />
+                  </span>
+                  {revealed && ok && (
+                    <span className="bm-mark" aria-hidden="true">
+                      ○
+                    </span>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </>
+      )}
       {revealed && (
         <>
-          <p className="bm-answer tnum">正解は {it.answer} 番</p>
+          <p className="bm-answer tnum">
+            {isCloze(it.questionType)
+              ? `正解は ${formatClozeAnswers(it.correctAnswers)}`
+              : `正解は ${it.answer} 番`}
+          </p>
           {it.explanation && (
             <div className="exp rich">
               <RichText text={it.explanation} />

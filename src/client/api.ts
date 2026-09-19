@@ -35,12 +35,29 @@ export interface Quiz {
   questionCount: number;
 }
 
+export type QuestionType = "single_choice" | "cloze_text";
+
+export interface ClozeBlank {
+  index: number;
+  answer: string;
+}
+
+export interface ClozeDetail {
+  blank: number;
+  correct: boolean;
+  answer: string;
+}
+
+export const isCloze = (t: QuestionType | undefined): boolean => t === "cloze_text";
+
 export interface Question {
   id: number;
   quizId: number;
+  questionType: QuestionType;
   statement: string;
   choices: string[];
   answer: number;
+  blanks: ClozeBlank[];
   explanation: string;
 }
 
@@ -49,8 +66,10 @@ export interface PlayQuestion {
   questionVersionId: number;
   attemptQuestionId?: number;
   position?: number;
+  questionType: QuestionType;
   statement: string;
   choices: string[];
+  blankCount: number;
   /** 表示順→元の番号のマップ。choicesは表示順に並べ替え済み。未設定=シャッフルなし(恒等写像) */
   choiceMap?: number[];
 }
@@ -86,6 +105,8 @@ export interface AttemptStateAnswer {
   correct: boolean;
   correctAnswer: number;
   explanation: string;
+  answers: string[];
+  details: ClozeDetail[];
 }
 
 export interface AttemptState {
@@ -120,12 +141,15 @@ export interface AttemptDetailItem {
   attemptQuestionId: number;
   questionId: number;
   questionVersionId: number;
+  questionType: QuestionType;
   statement: string;
   choices: string[];
   picked: number | null;
   pickedText: string | null;
   correctAnswer: number;
   correct: boolean | null;
+  pickedAnswers: string[];
+  correctAnswers: string[];
   explanation: string;
 }
 
@@ -143,9 +167,11 @@ export interface AttemptDetail {
 /** 問題別集計の1問 (GET /api/quizzes/:id/insights) */
 export interface QuestionInsight {
   questionId: number;
+  questionType: QuestionType;
   statement: string;
   choices: string[];
   correctAnswer: number;
+  correctAnswers: string[];
   explanation: string;
   /** 古い順。null = 未回答 */
   results: (boolean | null)[];
@@ -165,9 +191,11 @@ export interface MistakeItem {
   topicTitle: string;
   categoryId: number;
   categoryTitle: string;
+  questionType: QuestionType;
   statement: string;
   choices: string[];
   answer: number;
+  correctAnswers: string[];
   explanation: string;
   mistakeCount: number;
   lastWrongAt: string | null;
@@ -179,9 +207,11 @@ export interface BookmarkItem {
   questionVersionId: number;
   quizId: number;
   quizTitle: string;
+  questionType: QuestionType;
   statement: string;
   choices: string[];
   answer: number;
+  correctAnswers: string[];
   explanation: string;
   bookmarkedAt: string;
 }
@@ -191,9 +221,18 @@ export interface ReviewAnswerResult {
   correct: boolean;
   correctAnswer: number;
   explanation: string;
+  details: ClozeDetail[];
   streak: number;
   resolved: boolean;
   remaining: number;
+}
+
+/** POST /api/attempts/:id/answers の返却形 */
+export interface AnswerResult {
+  correct: boolean;
+  correctAnswer: number;
+  explanation: string;
+  details: ClozeDetail[];
 }
 
 export const fmtDuration = (sec: number | null | undefined): string => {

@@ -3,9 +3,14 @@
 -- 冪等ではなくリセット方式: FKをOFFにして全消去→INSERT
 PRAGMA foreign_keys = OFF;
 DELETE FROM question_bookmarks;
+DELETE FROM review_cloze_answers;
+DELETE FROM attempt_cloze_answers;
 DELETE FROM attempt_answers;
 DELETE FROM attempt_questions;
 DELETE FROM attempts;
+DELETE FROM review_answers;
+DELETE FROM question_cloze_answers;
+DELETE FROM question_cloze_blanks;
 DELETE FROM question_choices;
 DELETE FROM question_versions;
 DELETE FROM questions;

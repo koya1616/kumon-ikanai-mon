@@ -3,7 +3,28 @@
 import { useState } from "react";
 import type { ReactNode } from "react";
 
-const InlineParts = ({ text }: { text: string }): ReactNode => {
+/** statement中の {{n}} マーカーで分割する (コード内は対象外にするためInlinePartsから呼ぶ) */
+export const splitClozeParts = (text: string): ({ text: string } | { blank: number })[] => {
+  const out: ({ text: string } | { blank: number })[] = [];
+  const re = /\{\{(\d+)\}\}/g;
+  let last = 0;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(text)) !== null) {
+    if (m.index > last) out.push({ text: text.slice(last, m.index) });
+    out.push({ blank: Number(m[1]) });
+    last = m.index + m[0].length;
+  }
+  if (last < text.length) out.push({ text: text.slice(last) });
+  return out;
+};
+
+const InlineParts = ({
+  text,
+  renderBlank,
+}: {
+  text: string;
+  renderBlank?: ((blankIndex: number) => ReactNode) | undefined;
+}): ReactNode => {
   const parts = String(text).split(/(`[^`\n]+`)/g);
   return (
     <>
@@ -16,19 +37,37 @@ const InlineParts = ({ text }: { text: string }): ReactNode => {
             </code>
           );
         }
-        const lines = part.split("\n");
-        return (
-          <span key={i}>
-            {lines.map((line, j) => (
-              <span key={j}>
-                {j > 0 && <br />}
-                {line}
-              </span>
-            ))}
-          </span>
-        );
+        if (renderBlank) {
+          let k = 0;
+          return (
+            <span key={i}>
+              {splitClozeParts(part).map((seg) =>
+                "blank" in seg ? (
+                  <span key={k++}>{renderBlank(seg.blank)}</span>
+                ) : (
+                  <InlineLines key={k++} text={seg.text} />
+                ),
+              )}
+            </span>
+          );
+        }
+        return <InlineLines key={i} text={part} />;
       })}
     </>
+  );
+};
+
+const InlineLines = ({ text }: { text: string }): ReactNode => {
+  const lines = text.split("\n");
+  return (
+    <span>
+      {lines.map((line, j) => (
+        <span key={j}>
+          {j > 0 && <br />}
+          {line}
+        </span>
+      ))}
+    </span>
   );
 };
 
@@ -77,9 +116,12 @@ const CodeBlock = ({ lang, code }: { lang: string; code: string }) => {
 export const RichText = ({
   text,
   className,
+  renderBlank,
 }: {
   text: string | null | undefined;
   className?: string;
+  /** {{n}} マーカーの描画 (未指定ならマーカーをそのまま表示) */
+  renderBlank?: ((blankIndex: number) => ReactNode) | undefined;
 }) => {
   const src = text == null ? "" : String(text);
   const re = /```([A-Za-z0-9_+\-#.]*)\s*\n([\s\S]*?)```/g;
@@ -91,7 +133,9 @@ export const RichText = ({
   while ((m = re.exec(src))) {
     found = true;
     if (m.index > last) {
-      nodes.push(<InlineParts key={k++} text={src.slice(last, m.index)} />);
+      nodes.push(
+        <InlineParts key={k++} text={src.slice(last, m.index)} renderBlank={renderBlank} />,
+      );
     }
     nodes.push(<CodeBlock key={k++} lang={m[1] ?? ""} code={m[2] ?? ""} />);
     last = m.index + m[0].length;
@@ -99,12 +143,12 @@ export const RichText = ({
   if (!found) {
     return (
       <span className={className}>
-        <InlineParts text={src} />
+        <InlineParts text={src} renderBlank={renderBlank} />
       </span>
     );
   }
   if (last < src.length) {
-    nodes.push(<InlineParts key={k++} text={src.slice(last)} />);
+    nodes.push(<InlineParts key={k++} text={src.slice(last)} renderBlank={renderBlank} />);
   }
   return <span className={className}>{nodes}</span>;
 };

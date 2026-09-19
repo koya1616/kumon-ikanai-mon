@@ -1,11 +1,15 @@
 /// <reference types="@cloudflare/workers-types" />
 import type {
+  AnswerResult,
   Attempt,
   AttemptSummary,
   Category,
   CategoryTreeNode,
+  ClozeBlank,
+  ClozeDetail,
   PlayQuestion,
   Question,
+  QuestionType,
   Quiz,
   QuizStatus,
   ReviewAnswerResult,
@@ -226,6 +230,7 @@ export async function deleteQuiz(db: DB, id: number): Promise<void> {
 // ---------- Question (versions + choices) ----------
 
 export interface NewQuestion {
+  questionType?: "single_choice" | undefined;
   statement: string;
   choice1: string;
   choice2: string;
@@ -233,6 +238,45 @@ export interface NewQuestion {
   choice4: string;
   answer: number;
   explanation: string;
+}
+
+export interface NewClozeQuestion {
+  questionType: "cloze_text";
+  statement: string;
+  /** 空欄番号順 (1始まり連番) の正答 */
+  answers: string[];
+  explanation: string;
+}
+
+/** 版ごとの空欄+正答を取得する (正答は代表1件。将来の複数正答はsort_order先頭) */
+async function loadClozeBlanks(
+  db: DB,
+  versionIds: number[],
+): Promise<Map<number, ClozeBlank[]>> {
+  const out = new Map<number, ClozeBlank[]>();
+  if (!versionIds.length) return out;
+  const placeholders = versionIds.map(() => "?").join(",");
+  const { results } = await db
+    .prepare(
+      `SELECT b.question_version_id AS "versionId", b.blank_index AS "blankIndex",
+        (SELECT a.answer_text FROM question_cloze_answers a
+          WHERE a.blank_id = b.id ORDER BY a.sort_order, a.id LIMIT 1) AS "answer"
+       FROM question_cloze_blanks b
+       WHERE b.question_version_id IN (${placeholders}) ORDER BY b.question_version_id, b.blank_index`,
+    )
+    .bind(...versionIds)
+    .all<{ versionId: number; blankIndex: number; answer: string | null }>();
+  for (const r of results) {
+    const arr = out.get(r.versionId) ?? [];
+    arr.push({ index: Number(r.blankIndex), answer: r.answer ?? "" });
+    out.set(r.versionId, arr);
+  }
+  return out;
+}
+
+/** exact_trim採点: 入力trim後の完全一致。不足分は空文字扱い */
+function gradeCloze(inputs: string[], corrects: string[]): boolean[] {
+  return corrects.map((c, i) => (inputs[i] ?? "").trim() === c);
 }
 
 function toChoicesArray(q: NewQuestion): string[] {
@@ -286,6 +330,66 @@ export async function updateQuestion(db: DB, id: number, q: NewQuestion): Promis
   await insertVersion(db, id, q);
 }
 
+/** 穴埋め版の version + blanks + answers を作り、current_version_id を更新する */
+async function insertClozeVersion(
+  db: DB,
+  questionId: number,
+  q: NewClozeQuestion,
+): Promise<number> {
+  const cur = await db
+    .prepare("SELECT COALESCE(MAX(version), 0) AS v FROM question_versions WHERE question_id = ?")
+    .bind(questionId)
+    .first<{ v: number }>();
+  const version = Number(cur?.v ?? 0) + 1;
+  const vr = await db
+    .prepare(
+      "INSERT INTO question_versions (question_id, version, statement, explanation, question_type, points_possible) VALUES (?,?,?,?, 'cloze_text', ?)",
+    )
+    .bind(questionId, version, q.statement, q.explanation, q.answers.length)
+    .run();
+  const versionId = Number(vr.meta.last_row_id);
+  for (let i = 0; i < q.answers.length; i++) {
+    const br = await db
+      .prepare("INSERT INTO question_cloze_blanks (question_version_id, blank_index) VALUES (?,?)")
+      .bind(versionId, i + 1)
+      .run();
+    await db
+      .prepare("INSERT INTO question_cloze_answers (blank_id, answer_text, sort_order) VALUES (?,?,0)")
+      .bind(Number(br.meta.last_row_id), q.answers[i])
+      .run();
+  }
+  await db
+    .prepare(
+      "UPDATE questions SET current_version_id = ?, updated_at = datetime('now') WHERE id = ?",
+    )
+    .bind(versionId, questionId)
+    .run();
+  return versionId;
+}
+
+/** 管理用: 穴埋め1問作成 */
+export async function createClozeQuestion(
+  db: DB,
+  quizId: number,
+  q: NewClozeQuestion,
+): Promise<number> {
+  const r = await db.prepare("INSERT INTO questions (quiz_id) VALUES (?)").bind(quizId).run();
+  const questionId = Number(r.meta.last_row_id);
+  await insertClozeVersion(db, questionId, q);
+  return questionId;
+}
+
+/** 管理用: 穴埋め1問更新 (= 新しい version を発行する。履歴は残る) */
+export async function updateClozeQuestion(
+  db: DB,
+  id: number,
+  q: NewClozeQuestion,
+): Promise<void> {
+  const row = await db.prepare("SELECT id FROM questions WHERE id = ?").bind(id).first();
+  if (!row) throw new Error("問題がありません");
+  await insertClozeVersion(db, id, q);
+}
+
 /** 管理用: 1問削除 (履歴ありはDBのRESTRICTで失敗する) */
 export async function deleteQuestion(db: DB, id: number): Promise<void> {
   await db.prepare("DELETE FROM questions WHERE id = ?").bind(id).run();
@@ -296,6 +400,7 @@ type VersionRow = {
   quizId: number;
   questionVersionId: number;
   version: number;
+  questionType: QuestionType;
   statement: string;
   explanation: string;
 };
@@ -321,17 +426,24 @@ async function assembleQuestions(db: DB, versionRows: VersionRow[]): Promise<Que
     entry.choices[c.position - 1] = c.text;
     if (c.isCorrect === 1) entry.answer = c.position;
   }
+  const blanksByVersion = await loadClozeBlanks(
+    db,
+    versionRows.map((r) => r.questionVersionId),
+  );
   return versionRows.map((r) => {
     const e = byVersion.get(r.questionVersionId) ?? { choices: [], answer: 1 };
+    const blanks = blanksByVersion.get(r.questionVersionId) ?? [];
     return {
       id: r.questionId,
       quizId: r.quizId,
       currentVersionId: r.questionVersionId,
       version: r.version,
       questionVersionId: r.questionVersionId,
+      questionType: r.questionType,
       statement: r.statement,
-      choices: e.choices,
-      answer: e.answer,
+      choices: r.questionType === "cloze_text" ? [] : e.choices,
+      answer: r.questionType === "cloze_text" ? 0 : e.answer,
+      blanks,
       explanation: r.explanation,
     };
   });
@@ -342,6 +454,7 @@ export async function listQuestionsByQuiz(db: DB, quizId: number): Promise<Quest
     .prepare(
       `SELECT q.id AS "questionId", q.quiz_id AS "quizId",
         v.id AS "questionVersionId", v.version AS "version",
+        v.question_type AS "questionType",
         v.statement AS "statement", v.explanation AS "explanation"
        FROM questions q JOIN question_versions v ON v.id = q.current_version_id
        WHERE q.quiz_id = ? ORDER BY q.id`,
@@ -351,18 +464,32 @@ export async function listQuestionsByQuiz(db: DB, quizId: number): Promise<Quest
   return assembleQuestions(db, results);
 }
 
+type PlayRow = {
+  questionId: number;
+  questionVersionId: number;
+  questionType: QuestionType;
+  statement: string;
+  blankCount: number;
+};
+
 /** 出題用: 現在のversion (答え・解説なし) */
 export async function listPlayQuestions(db: DB, quizId: number): Promise<PlayQuestion[]> {
   const { results } = await db
     .prepare(
-      `SELECT q.id AS "questionId", v.id AS "questionVersionId", v.statement AS "statement"
+      `SELECT q.id AS "questionId", v.id AS "questionVersionId",
+        v.question_type AS "questionType", v.statement AS "statement",
+        (SELECT COUNT(*) FROM question_cloze_blanks b WHERE b.question_version_id = v.id) AS "blankCount"
        FROM questions q JOIN question_versions v ON v.id = q.current_version_id
        WHERE q.quiz_id = ? ORDER BY q.id`,
     )
     .bind(quizId)
-    .all<{ questionId: number; questionVersionId: number; statement: string }>();
-  if (!results.length) return [];
-  const ids = results.map((r) => r.questionVersionId);
+    .all<PlayRow>();
+  return assemblePlayQuestions(db, results);
+}
+
+async function assemblePlayQuestions(db: DB, rows: PlayRow[]): Promise<PlayQuestion[]> {
+  if (!rows.length) return [];
+  const ids = rows.map((r) => r.questionVersionId);
   const placeholders = ids.map(() => "?").join(",");
   const { results: choiceRows } = await db
     .prepare(
@@ -377,11 +504,13 @@ export async function listPlayQuestions(db: DB, quizId: number): Promise<PlayQue
     arr[c.position - 1] = c.text;
     byVersion.set(c.versionId, arr);
   }
-  return results.map((r) => ({
+  return rows.map((r) => ({
     questionId: r.questionId,
     questionVersionId: r.questionVersionId,
+    questionType: r.questionType,
     statement: r.statement,
-    choices: byVersion.get(r.questionVersionId) ?? [],
+    choices: r.questionType === "cloze_text" ? [] : (byVersion.get(r.questionVersionId) ?? []),
+    blankCount: Number(r.blankCount ?? 0),
   }));
 }
 
@@ -391,7 +520,8 @@ export async function listAttemptPlayQuestions(db: DB, attemptId: number): Promi
     .prepare(
       `SELECT aq.id AS "attemptQuestionId", aq.position AS "position",
         v.question_id AS "questionId",
-        v.id AS "questionVersionId", v.statement AS "statement"
+        v.id AS "questionVersionId", v.question_type AS "questionType", v.statement AS "statement",
+        (SELECT COUNT(*) FROM question_cloze_blanks b WHERE b.question_version_id = v.id) AS "blankCount"
        FROM attempt_questions aq JOIN question_versions v ON v.id = aq.question_version_id
        WHERE aq.attempt_id = ? ORDER BY aq.position`,
     )
@@ -401,31 +531,26 @@ export async function listAttemptPlayQuestions(db: DB, attemptId: number): Promi
       position: number;
       questionId: number;
       questionVersionId: number;
+      questionType: QuestionType;
       statement: string;
+      blankCount: number;
     }>();
   if (!results.length) return [];
-  const ids = results.map((r) => r.questionVersionId);
-  const placeholders = ids.map(() => "?").join(",");
-  const { results: choiceRows } = await db
-    .prepare(
-      `SELECT question_version_id AS "versionId", position, choice_text AS "text"
-       FROM question_choices WHERE question_version_id IN (${placeholders}) ORDER BY question_version_id, position`,
-    )
-    .bind(...ids)
-    .all<{ versionId: number; position: number; text: string }>();
-  const byVersion = new Map<number, string[]>();
-  for (const c of choiceRows) {
-    const arr = byVersion.get(c.versionId) ?? [];
-    arr[c.position - 1] = c.text;
-    byVersion.set(c.versionId, arr);
-  }
+  const base = await assemblePlayQuestions(
+    db,
+    results.map((r) => ({
+      questionId: r.questionId,
+      questionVersionId: r.questionVersionId,
+      questionType: r.questionType,
+      statement: r.statement,
+      blankCount: Number(r.blankCount ?? 0),
+    })),
+  );
+  const byVersion = new Map(base.map((q) => [q.questionVersionId, q] as const));
   return results.map((r) => ({
-    questionId: r.questionId,
-    questionVersionId: r.questionVersionId,
+    ...(byVersion.get(r.questionVersionId) as PlayQuestion),
     attemptQuestionId: r.attemptQuestionId,
     position: r.position,
-    statement: r.statement,
-    choices: byVersion.get(r.questionVersionId) ?? [],
   }));
 }
 
@@ -437,11 +562,11 @@ export async function countQuestions(db: DB, quizId: number): Promise<number> {
   return Number(row?.c ?? 0);
 }
 
-/** quizの問題を保存 (管理UI用: 新規version発行方式。削除は履歴なし分のみ) */
+/** quizの問題を保存 (管理UI用: 新規version発行方式。削除は履歴なし分のみ。4択・穴埋め混在可) */
 export async function replaceQuestions(
   db: DB,
   quizId: number,
-  questions: NewQuestion[],
+  questions: (NewQuestion | NewClozeQuestion)[],
 ): Promise<number> {
   if (questions.length > QUESTIONS_PER_QUIZ) {
     throw new Error(`1quizあたり最大${QUESTIONS_PER_QUIZ}問です`);
@@ -473,9 +598,18 @@ export async function replaceQuestions(
   for (let i = 0; i < questions.length; i++) {
     const q = questions[i]!;
     if (i < existing.length) {
-      await insertVersion(db, existing[i]!.id, q);
+      const questionId = existing[i]!.id;
+      if (q.questionType === "cloze_text") {
+        await insertClozeVersion(db, questionId, q);
+      } else {
+        await insertVersion(db, questionId, q);
+      }
     } else {
-      await createQuestion(db, quizId, q);
+      if (q.questionType === "cloze_text") {
+        await createClozeQuestion(db, quizId, q);
+      } else {
+        await createQuestion(db, quizId, q);
+      }
     }
   }
   if (extras.length) {
@@ -525,6 +659,9 @@ export interface AttemptStateAnswer {
   correct: boolean;
   correctAnswer: number;
   explanation: string;
+  /** cloze_text の入力・空欄単位明細 (single_choiceでは空配列) */
+  answers: string[];
+  details: ClozeDetail[];
 }
 
 export async function getAttemptState(
@@ -560,24 +697,63 @@ export async function getAttemptState(
     .bind(attemptId)
     .all<{
       attemptQuestionId: number;
-      choice: number;
+      choice: number | null;
       correct: number;
       correctAnswer: number | null;
       explanation: string | null;
     }>();
+  const clozeByAq = await loadAttemptClozeDetails(db, attemptId);
   return {
     attemptId: attempt.id,
     quizId: attempt.quizId,
     completedAt: attempt.completedAt,
     questions,
-    answers: results.map((r) => ({
-      attemptQuestionId: r.attemptQuestionId,
-      choice: r.choice,
-      correct: r.correct === 1,
-      correctAnswer: Number(r.correctAnswer ?? 0),
-      explanation: r.explanation ?? "",
-    })),
+    answers: results.map((r) => {
+      const cloze = clozeByAq.get(r.attemptQuestionId) ?? { inputs: [], details: [] };
+      return {
+        attemptQuestionId: r.attemptQuestionId,
+        choice: Number(r.choice ?? 0),
+        correct: r.correct === 1,
+        correctAnswer: Number(r.correctAnswer ?? 0),
+        explanation: r.explanation ?? "",
+        answers: cloze.inputs,
+        details: cloze.details,
+      };
+    }),
   };
+}
+
+/** attempt内の穴埋め回答明細 (出題id → 入力・正誤・正答) */
+async function loadAttemptClozeDetails(
+  db: DB,
+  attemptId: number,
+): Promise<Map<number, { inputs: string[]; details: ClozeDetail[] }>> {
+  const out = new Map<number, { inputs: string[]; details: ClozeDetail[] }>();
+  const { results } = await db
+    .prepare(
+      `SELECT aca.attempt_question_id AS "aqId", aca.blank_index AS "blank",
+        aca.user_answer_text AS "input", aca.correct AS "correct",
+        (SELECT a.answer_text FROM question_cloze_answers a
+          JOIN question_cloze_blanks b ON b.id = a.blank_id
+          WHERE b.question_version_id = aq.question_version_id AND b.blank_index = aca.blank_index
+          ORDER BY a.sort_order, a.id LIMIT 1) AS "answer"
+       FROM attempt_cloze_answers aca
+       JOIN attempt_questions aq ON aq.id = aca.attempt_question_id
+       WHERE aq.attempt_id = ? ORDER BY aq.position, aca.blank_index`,
+    )
+    .bind(attemptId)
+    .all<{ aqId: number; blank: number; input: string; correct: number; answer: string | null }>();
+  for (const r of results) {
+    const cur = out.get(r.aqId) ?? { inputs: [], details: [] };
+    cur.inputs.push(r.input);
+    cur.details.push({
+      blank: Number(r.blank),
+      correct: Number(r.correct) === 1,
+      answer: r.answer ?? "",
+    });
+    out.set(r.aqId, cur);
+  }
+  return out;
 }
 
 /** 挑戦開始: attempts行 + 現versionのスナップショットをattempt_questionsに作成 */
@@ -609,8 +785,8 @@ export async function recordAnswer(
   db: DB,
   attemptId: number,
   attemptQuestionId: number,
-  choice: number,
-): Promise<{ correct: boolean; correctAnswer: number; explanation: string }> {
+  input: { choice?: number | undefined; answers?: string[] | undefined },
+): Promise<AnswerResult> {
   const aq = await db
     .prepare(
       `SELECT aq.id, aq.question_version_id AS "versionId", a.quiz_id AS "attemptQuizId",
@@ -623,10 +799,15 @@ export async function recordAnswer(
   if (!aq) throw new Error("この挑戦の問題ではありません");
   if (aq.completedAt !== null) throw new Error("この挑戦は完了しています");
   const version = await db
-    .prepare("SELECT explanation FROM question_versions WHERE id = ?")
+    .prepare("SELECT explanation, question_type AS questionType FROM question_versions WHERE id = ?")
     .bind(aq.versionId)
-    .first<{ explanation: string }>();
+    .first<{ explanation: string; questionType: QuestionType }>();
   if (!version) throw new Error("問題がありません");
+  if (version.questionType === "cloze_text") {
+    return recordClozeAnswer(db, attemptId, attemptQuestionId, aq.versionId, version.explanation ?? "", input.answers);
+  }
+  const choice = input.choice;
+  if (choice === undefined) throw new Error("choiceを指定してください");
   const { results: choices } = await db
     .prepare(
       "SELECT position, choice_text AS text, is_correct AS isCorrect FROM question_choices WHERE question_version_id = ? ORDER BY position",
@@ -639,15 +820,29 @@ export async function recordAnswer(
   const correctRow = choices.find((c) => c.isCorrect === 1);
   const correctAnswer = correctRow?.position ?? 0;
   const correct = choice === correctAnswer ? 1 : 0;
+  await insertAttemptHeader(db, attemptId, attemptQuestionId, choice, picked.text, "", correct);
+  return { correct: correct === 1, correctAnswer, explanation: version.explanation ?? "", details: [] };
+}
+
+/** 回答ヘッダ1行の挿入 (二重回答・完了後回答の競合を検出する) */
+async function insertAttemptHeader(
+  db: DB,
+  attemptId: number,
+  attemptQuestionId: number,
+  choice: number | null,
+  choiceText: string,
+  answerText: string,
+  correct: number,
+): Promise<void> {
   try {
     const write = await db
       .prepare(
-        `INSERT INTO attempt_answers (attempt_question_id, choice_position, choice_text_snapshot, correct)
-         SELECT aq.id, ?, ?, ?
+        `INSERT INTO attempt_answers (attempt_question_id, choice_position, choice_text_snapshot, answer_text_snapshot, correct)
+         SELECT aq.id, ?, ?, ?, ?
          FROM attempt_questions aq JOIN attempts a ON a.id = aq.attempt_id
          WHERE aq.id = ? AND aq.attempt_id = ? AND a.completed_at IS NULL`,
       )
-      .bind(choice, picked.text, correct, attemptQuestionId, attemptId)
+      .bind(choice, choiceText, answerText, correct, attemptQuestionId, attemptId)
       .run();
     if (write.meta.changes !== 1) throw new Error("この挑戦は完了しています");
   } catch {
@@ -658,7 +853,49 @@ export async function recordAnswer(
     if (answered) throw new Error("この問題は回答済みです");
     throw new Error("この挑戦は完了しています");
   }
-  return { correct: correct === 1, correctAnswer, explanation: version.explanation ?? "" };
+}
+
+/** 穴埋め1問分の解答を記録し、空欄単位で採点する */
+async function recordClozeAnswer(
+  db: DB,
+  attemptId: number,
+  attemptQuestionId: number,
+  versionId: number,
+  explanation: string,
+  rawAnswers: string[] | undefined,
+): Promise<AnswerResult> {
+  const blanks = (await loadClozeBlanks(db, [versionId])).get(versionId) ?? [];
+  if (!blanks.length) throw new Error("問題がありません");
+  if (!rawAnswers || rawAnswers.length !== blanks.length) {
+    throw new Error(`回答は${blanks.length}個の空欄分すべて入力してください`);
+  }
+  const trimmed = rawAnswers.map((s) => (typeof s === "string" ? s.trim() : ""));
+  if (trimmed.some((s) => !s)) throw new Error("空欄が未入力です");
+  const per = gradeCloze(trimmed, blanks.map((b) => b.answer));
+  const allOk = per.every(Boolean) ? 1 : 0;
+  await insertAttemptHeader(
+    db,
+    attemptId,
+    attemptQuestionId,
+    null,
+    "",
+    trimmed.join(" / "),
+    allOk,
+  );
+  const stmts = blanks.map((b, i) =>
+    db
+      .prepare(
+        "INSERT INTO attempt_cloze_answers (attempt_question_id, blank_index, user_answer_text, correct) VALUES (?,?,?,?)",
+      )
+      .bind(attemptQuestionId, b.index, trimmed[i], per[i] ? 1 : 0),
+  );
+  await db.batch(stmts);
+  return {
+    correct: allOk === 1,
+    correctAnswer: 0,
+    explanation,
+    details: blanks.map((b, i) => ({ blank: b.index, correct: per[i]!, answer: b.answer })),
+  };
 }
 
 /** 挑戦を完了し、集計スコアを確定する。集計は単一UPDATE文で原子的に行う */
@@ -776,12 +1013,15 @@ export async function getAttemptDetail(
     attemptQuestionId: number;
     questionId: number;
     questionVersionId: number;
+    questionType: QuestionType;
     statement: string;
     choices: string[];
     picked: number | null;
     pickedText: string | null;
     correctAnswer: number;
     correct: boolean | null;
+    pickedAnswers: string[];
+    correctAnswers: string[];
     explanation: string;
   }[];
 } | null> {
@@ -809,7 +1049,8 @@ export async function getAttemptDetail(
     .prepare(
       `SELECT aq.id AS "attemptQuestionId", aq.position AS "position",
         v.question_id AS "questionId",
-        v.id AS "questionVersionId", v.statement AS "statement",
+        v.id AS "questionVersionId", v.question_type AS "questionType",
+        v.statement AS "statement",
         v.explanation AS "explanation",
         aa.choice_position AS "picked", aa.choice_text_snapshot AS "pickedText",
         aa.correct AS "correct",
@@ -826,6 +1067,7 @@ export async function getAttemptDetail(
       position: number;
       questionId: number;
       questionVersionId: number;
+      questionType: QuestionType;
       statement: string;
       explanation: string | null;
       picked: number | null;
@@ -860,6 +1102,11 @@ export async function getAttemptDetail(
     arr[c.position - 1] = c.text;
     byVersion.set(c.versionId, arr);
   }
+  const clozeDetails = await loadAttemptClozeDetails(db, attemptId);
+  const clozeBlanks = await loadClozeBlanks(
+    db,
+    rows.filter((r) => r.questionType === "cloze_text").map((r) => r.questionVersionId),
+  );
   return {
     attemptId: attempt.id,
     quizId: attempt.quizId,
@@ -868,29 +1115,39 @@ export async function getAttemptDetail(
     completedAt: attempt.completedAt,
     createdAt: attempt.createdAt,
     durationSec: attempt.durationSec === null ? null : Number(attempt.durationSec),
-    items: rows.map((r) => ({
-      position: Number(r.position),
-      attemptQuestionId: Number(r.attemptQuestionId),
-      questionId: Number(r.questionId),
-      questionVersionId: Number(r.questionVersionId),
-      statement: r.statement,
-      choices: byVersion.get(r.questionVersionId) ?? [],
-      picked: r.picked === null ? null : Number(r.picked),
-      pickedText: r.pickedText,
-      correctAnswer: Number(r.correctAnswer ?? 0),
-      correct: r.correct === null ? null : r.correct === 1,
-      explanation: r.explanation ?? "",
-    })),
+    items: rows.map((r) => {
+      const isCloze = r.questionType === "cloze_text";
+      const cloze = clozeDetails.get(r.attemptQuestionId) ?? { inputs: [], details: [] };
+      return {
+        position: Number(r.position),
+        attemptQuestionId: Number(r.attemptQuestionId),
+        questionId: Number(r.questionId),
+        questionVersionId: Number(r.questionVersionId),
+        questionType: r.questionType,
+        statement: r.statement,
+        choices: isCloze ? [] : (byVersion.get(r.questionVersionId) ?? []),
+        picked: r.picked === null ? null : Number(r.picked),
+        pickedText: r.pickedText,
+        correctAnswer: Number(r.correctAnswer ?? 0),
+        correct: r.correct === null ? null : r.correct === 1,
+        pickedAnswers: cloze.inputs,
+        correctAnswers: (clozeBlanks.get(r.questionVersionId) ?? []).map((b) => b.answer),
+        explanation: r.explanation ?? "",
+      };
+    }),
   };
 }
 
 /** 履歴ページの問題別集計: 完了済み挑戦の正誤を問題 (question_id) 単位の時系列に束ねる */
 export interface QuestionInsight {
   questionId: number;
+  questionType: QuestionType;
   /** 最後に出題された版のスナップショット */
   statement: string;
   choices: string[];
   correctAnswer: number;
+  /** cloze_text の正答一覧 (single_choiceでは空配列) */
+  correctAnswers: string[];
   explanation: string;
   /** 古い順。null = 未回答 */
   results: (boolean | null)[];
@@ -903,6 +1160,7 @@ export async function getQuizInsights(
   const { results: rows } = await db
     .prepare(
       `SELECT a.id AS "attemptId", v.question_id AS "questionId", v.id AS "versionId",
+        v.question_type AS "questionType",
         v.statement AS "statement", v.explanation AS "explanation", aa.correct AS "correct"
        FROM attempts a
        JOIN attempt_questions aq ON aq.attempt_id = a.id
@@ -916,6 +1174,7 @@ export async function getQuizInsights(
       attemptId: number;
       questionId: number;
       versionId: number;
+      questionType: QuestionType;
       statement: string;
       explanation: string | null;
       correct: number | null;
@@ -923,19 +1182,27 @@ export async function getQuizInsights(
   const attemptIds = new Set<number>();
   const byQuestion = new Map<
     number,
-    { versionId: number; statement: string; explanation: string; results: (boolean | null)[] }
+    {
+      versionId: number;
+      questionType: QuestionType;
+      statement: string;
+      explanation: string;
+      results: (boolean | null)[];
+    }
   >();
   for (const r of rows) {
     attemptIds.add(Number(r.attemptId));
     const qid = Number(r.questionId);
     const cur = byQuestion.get(qid) ?? {
       versionId: 0,
+      questionType: "single_choice" as QuestionType,
       statement: "",
       explanation: "",
       results: [],
     };
     // 古い順に走査するので最後に見た版が最新スナップショットになる
     cur.versionId = Number(r.versionId);
+    cur.questionType = r.questionType;
     cur.statement = r.statement;
     cur.explanation = r.explanation ?? "";
     cur.results.push(r.correct === null ? null : Number(r.correct) === 1);
@@ -961,15 +1228,24 @@ export async function getQuizInsights(
     choicesByVersion.set(Number(c.versionId), entry);
   }
 
+  const clozeByVersion = await loadClozeBlanks(
+    db,
+    [...byQuestion.values()]
+      .filter((q) => q.questionType === "cloze_text")
+      .map((q) => q.versionId),
+  );
   return {
     attemptCount: attemptIds.size,
     questions: [...byQuestion.entries()].map(([questionId, q]) => {
       const c = choicesByVersion.get(q.versionId);
+      const isCloze = q.questionType === "cloze_text";
       return {
         questionId,
+        questionType: q.questionType,
         statement: q.statement,
-        choices: c?.choices ?? [],
-        correctAnswer: c?.correct ?? 0,
+        choices: isCloze ? [] : (c?.choices ?? []),
+        correctAnswer: isCloze ? 0 : (c?.correct ?? 0),
+        correctAnswers: (clozeByVersion.get(q.versionId) ?? []).map((b) => b.answer),
         explanation: q.explanation,
         results: q.results,
       };
@@ -1035,9 +1311,12 @@ export interface MistakeItem {
   topicTitle: string;
   categoryId: number;
   categoryTitle: string;
+  questionType: QuestionType;
   statement: string;
   choices: string[];
   answer: number;
+  /** cloze_text の正答一覧 (single_choiceでは空配列) */
+  correctAnswers: string[];
   explanation: string;
   mistakeCount: number;
   lastWrongAt: string | null;
@@ -1059,18 +1338,33 @@ export async function questionHasReviewAnswers(db: DB, questionId: number): Prom
  */
 export async function createReviewAnswer(
   db: DB,
-  input: { questionVersionId: number; choice: number; sessionId?: string | undefined },
+  input: {
+    questionVersionId: number;
+    choice?: number | undefined;
+    answers?: string[] | undefined;
+    sessionId?: string | undefined;
+  },
 ): Promise<ReviewAnswerResult> {
   const version = await db
     .prepare(
       `SELECT v.id AS "versionId", v.question_id AS "questionId", v.explanation AS "explanation",
-        q.quiz_id AS "quizId"
+        v.question_type AS "questionType", q.quiz_id AS "quizId"
        FROM question_versions v JOIN questions q ON q.id = v.question_id
        WHERE v.id = ?`,
     )
     .bind(input.questionVersionId)
-    .first<{ versionId: number; questionId: number; explanation: string | null; quizId: number }>();
+    .first<{
+      versionId: number;
+      questionId: number;
+      explanation: string | null;
+      questionType: QuestionType;
+      quizId: number;
+    }>();
   if (!version) throw new Error("問題がありません");
+  if (version.questionType === "cloze_text") {
+    return createReviewClozeAnswer(db, version, input.answers, input.sessionId);
+  }
+  if (input.choice === undefined) throw new Error("choiceを指定してください");
   const { results: choices } = await db
     .prepare(
       "SELECT position, choice_text AS text, is_correct AS isCorrect FROM question_choices WHERE question_version_id = ? ORDER BY position",
@@ -1098,13 +1392,78 @@ export async function createReviewAnswer(
       correct,
     )
     .run();
-  // 直近N件を取得し、先頭からの連続正解を数える
+  const streakInfo = await calcReviewStreak(db, version.questionId);
+  return {
+    correct: correct === 1,
+    correctAnswer,
+    explanation: version.explanation ?? "",
+    details: [],
+    ...streakInfo,
+  };
+}
+
+/** 復習の穴埋め回答を記録し、空欄単位で採点する */
+async function createReviewClozeAnswer(
+  db: DB,
+  version: { versionId: number; questionId: number; explanation: string | null; quizId: number },
+  rawAnswers: string[] | undefined,
+  sessionId: string | undefined,
+): Promise<ReviewAnswerResult> {
+  const blanks = (await loadClozeBlanks(db, [version.versionId])).get(version.versionId) ?? [];
+  if (!blanks.length) throw new Error("問題がありません");
+  if (!rawAnswers || rawAnswers.length !== blanks.length) {
+    throw new Error(`回答は${blanks.length}個の空欄分すべて入力してください`);
+  }
+  const trimmed = rawAnswers.map((s) => (typeof s === "string" ? s.trim() : ""));
+  if (trimmed.some((s) => !s)) throw new Error("空欄が未入力です");
+  const per = gradeCloze(trimmed, blanks.map((b) => b.answer));
+  const allOk = per.every(Boolean) ? 1 : 0;
+  const r = await db
+    .prepare(
+      `INSERT INTO review_answers
+        (session_id, question_id, question_version_id, quiz_id, choice_position, choice_text_snapshot, answer_text_snapshot, correct)
+       VALUES (?,?,?,?,NULL,'',?,?)`,
+    )
+    .bind(
+      sessionId ?? null,
+      version.questionId,
+      version.versionId,
+      version.quizId,
+      trimmed.join(" / "),
+      allOk,
+    )
+    .run();
+  const reviewId = Number(r.meta.last_row_id);
+  await db.batch(
+    blanks.map((b, i) =>
+      db
+        .prepare(
+          "INSERT INTO review_cloze_answers (review_answer_id, blank_index, user_answer_text, correct) VALUES (?,?,?,?)",
+        )
+        .bind(reviewId, b.index, trimmed[i], per[i] ? 1 : 0),
+    ),
+  );
+  const streakInfo = await calcReviewStreak(db, version.questionId);
+  return {
+    correct: allOk === 1,
+    correctAnswer: 0,
+    explanation: version.explanation ?? "",
+    details: blanks.map((b, i) => ({ blank: b.index, correct: per[i]!, answer: b.answer })),
+    ...streakInfo,
+  };
+}
+
+/** 直近N件から連続正解数を数える (本番+復習の統合時系列) */
+async function calcReviewStreak(
+  db: DB,
+  questionId: number,
+): Promise<{ streak: number; resolved: boolean; remaining: number }> {
   const { results: recent } = await db
     .prepare(
       `SELECT correct FROM unified_answer_history
        WHERE question_id = ? ORDER BY created_at DESC, seq DESC LIMIT ?`,
     )
-    .bind(version.questionId, REVIEW_CLEAR_STREAK)
+    .bind(questionId, REVIEW_CLEAR_STREAK)
     .all<{ correct: number }>();
   let streak = 0;
   for (const r of recent) {
@@ -1112,9 +1471,6 @@ export async function createReviewAnswer(
     else break;
   }
   return {
-    correct: correct === 1,
-    correctAnswer,
-    explanation: version.explanation ?? "",
     streak,
     resolved: streak >= REVIEW_CLEAR_STREAK,
     remaining: Math.max(0, REVIEW_CLEAR_STREAK - streak),
@@ -1169,6 +1525,7 @@ export async function listMistakes(
         qz.id AS "quizId", qz.title AS "quizTitle",
         t.title AS "topicTitle",
         c.id AS "categoryId", c.title AS "categoryTitle",
+        cv.question_type AS "questionType",
         cv.statement AS "statement", cv.explanation AS "explanation",
         agg."mistakeCount", agg."lastWrongAt"
        FROM questions q
@@ -1192,6 +1549,7 @@ export async function listMistakes(
       topicTitle: string;
       categoryId: number;
       categoryTitle: string;
+      questionType: QuestionType;
       statement: string;
       explanation: string | null;
       mistakeCount: number;
@@ -1217,8 +1575,13 @@ export async function listMistakes(
     entry.choices[ch.position - 1] = ch.text;
     if (ch.isCorrect === 1) entry.answer = ch.position;
   }
+  const clozeByVersion = await loadClozeBlanks(
+    db,
+    rows.filter((r) => r.questionType === "cloze_text").map((r) => r.questionVersionId),
+  );
   return rows.map((r) => {
     const e = byVersion.get(r.questionVersionId) ?? { choices: [], answer: 1 };
+    const isCloze = r.questionType === "cloze_text";
     return {
       questionId: Number(r.questionId),
       questionVersionId: Number(r.questionVersionId),
@@ -1227,9 +1590,11 @@ export async function listMistakes(
       topicTitle: r.topicTitle,
       categoryId: Number(r.categoryId),
       categoryTitle: r.categoryTitle,
+      questionType: r.questionType,
       statement: r.statement,
-      choices: e.choices,
-      answer: e.answer,
+      choices: isCloze ? [] : e.choices,
+      answer: isCloze ? 0 : e.answer,
+      correctAnswers: (clozeByVersion.get(r.questionVersionId) ?? []).map((b) => b.answer),
       explanation: r.explanation ?? "",
       mistakeCount: Number(r.mistakeCount),
       lastWrongAt: r.lastWrongAt,
@@ -1276,9 +1641,11 @@ export async function listBookmarks(
     questionVersionId: number;
     quizId: number;
     quizTitle: string;
+    questionType: QuestionType;
     statement: string;
     choices: string[];
     answer: number;
+    correctAnswers: string[];
     explanation: string;
     bookmarkedAt: string;
   }[]
@@ -1296,6 +1663,7 @@ export async function listBookmarks(
       `SELECT q.id AS "questionId",
         q.current_version_id AS "questionVersionId",
         q.quiz_id AS "quizId", qz.title AS "quizTitle",
+        cv.question_type AS "questionType",
         cv.statement AS "statement", cv.explanation AS "explanation",
         b.created_at AS "bookmarkedAt"
        FROM question_bookmarks b
@@ -1311,6 +1679,7 @@ export async function listBookmarks(
       questionVersionId: number;
       quizId: number;
       quizTitle: string;
+      questionType: QuestionType;
       statement: string;
       explanation: string | null;
       bookmarkedAt: string;
@@ -1335,16 +1704,23 @@ export async function listBookmarks(
     entry.choices[ch.position - 1] = ch.text;
     if (ch.isCorrect === 1) entry.answer = ch.position;
   }
+  const clozeByVersion = await loadClozeBlanks(
+    db,
+    rows.filter((r) => r.questionType === "cloze_text").map((r) => r.questionVersionId),
+  );
   return rows.map((r) => {
     const e = byVersion.get(r.questionVersionId) ?? { choices: [], answer: 1 };
+    const isCloze = r.questionType === "cloze_text";
     return {
       questionId: Number(r.questionId),
       questionVersionId: Number(r.questionVersionId),
       quizId: Number(r.quizId),
       quizTitle: r.quizTitle,
+      questionType: r.questionType,
       statement: r.statement,
-      choices: e.choices,
-      answer: e.answer,
+      choices: isCloze ? [] : e.choices,
+      answer: isCloze ? 0 : e.answer,
+      correctAnswers: (clozeByVersion.get(r.questionVersionId) ?? []).map((b) => b.answer),
       explanation: r.explanation ?? "",
       bookmarkedAt: r.bookmarkedAt,
     };

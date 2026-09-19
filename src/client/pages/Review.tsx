@@ -3,9 +3,10 @@
 // 直近REVIEW_CLEAR_STREAK連続正解で苦手解消となる。
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router";
-import { api } from "../api";
+import { api, isCloze } from "../api";
 import type { MistakeItem, ReviewAnswerResult } from "../api";
 import { BookmarkButton } from "../bookmark";
+import { ClozeStatement, formatClozeAnswers } from "../cloze";
 import { RichText } from "../rich";
 import { shuffle } from "../resume";
 import { Crumbs, EmptyState, Skeletons } from "../ui";
@@ -26,6 +27,9 @@ export const Review = () => {
   const [order, setOrder] = useState<MistakeItem[]>([]);
   const [pos, setPos] = useState(0);
   const [picks, setPicks] = useState<Record<number, number>>({});
+  const [clozeInputs, setClozeInputs] = useState<Record<number, string[]>>({});
+  const [clozeResults, setClozeResults] = useState<Record<number, ReviewAnswerResult>>({});
+  const [clozeBusy, setClozeBusy] = useState(false);
   const [expCollapsed, setExpCollapsed] = useState(false);
   // 1周回を束ねるID (集計用予約。サーバ側はNULL可だが常に送る)
   const [sessionId] = useState(() =>
@@ -61,14 +65,18 @@ export const Review = () => {
     setOrder(shuffle(state.items));
     setPos(0);
     setPicks({});
+    setClozeInputs({});
+    setClozeResults({});
     setServerInfo({});
     setExpCollapsed(false);
     window.scrollTo(0, 0);
   }, [state]);
 
   const target = order[pos];
+  const targetCloze = !!target && isCloze(target.questionType);
   const picked = target ? picks[target.questionVersionId] : undefined;
-  const revealed = picked !== undefined;
+  const clozeResult = target ? clozeResults[target.questionVersionId] : undefined;
+  const revealed = picked !== undefined || clozeResult !== undefined;
 
   const { doneCount, correctCount } = useMemo(() => {
     const entries = Object.entries(picks);
@@ -77,8 +85,12 @@ export const Review = () => {
       const it = order.find((o) => o.questionVersionId === Number(k));
       if (it && it.answer === v) ok++;
     }
-    return { doneCount: entries.length, correctCount: ok };
-  }, [picks, order]);
+    const clozeEntries = Object.entries(clozeResults);
+    for (const [, r] of clozeEntries) {
+      if (r.correct) ok++;
+    }
+    return { doneCount: entries.length + clozeEntries.length, correctCount: ok };
+  }, [picks, clozeResults, order]);
 
   const remaining = order.length - doneCount;
   const finished = order.length > 0 && revealed && doneCount >= order.length;
@@ -101,6 +113,27 @@ export const Review = () => {
     },
     [target, revealed, sessionId],
   );
+
+  const submitCloze = useCallback(() => {
+    if (!target || revealed || clozeBusy) return;
+    const inputs = clozeInputs[target.questionVersionId] ?? [];
+    if (inputs.length !== target.correctAnswers.length || inputs.some((s) => !s.trim())) return;
+    setClozeBusy(true);
+    api<ReviewAnswerResult>("/api/review/answers", {
+      method: "POST",
+      body: { questionVersionId: target.questionVersionId, answers: inputs, sessionId },
+    })
+      .then((r) => {
+        setClozeResults((s) => ({ ...s, [target.questionVersionId]: r }));
+        setServerInfo((s) => ({ ...s, [target.questionVersionId]: r }));
+      })
+      .catch(() => {
+        /* 記録失敗は無視する */
+      })
+      .finally(() => {
+        setClozeBusy(false);
+      });
+  }, [target, revealed, clozeBusy, clozeInputs, sessionId]);
 
   const next = useCallback(() => {
     if (!revealed) return;
@@ -125,10 +158,12 @@ export const Review = () => {
       if (dlg?.open) return;
       if (state.name !== "ready" || !target) return;
       if (e.key >= "1" && e.key <= "4" && !revealed) {
-        const idx = Number(e.key) - 1;
-        if (target.choices[idx] !== undefined) {
-          e.preventDefault();
-          pick(Number(e.key));
+        if (!isCloze(target.questionType)) {
+          const idx = Number(e.key) - 1;
+          if (target.choices[idx] !== undefined) {
+            e.preventDefault();
+            pick(Number(e.key));
+          }
         }
       } else if ((e.key === "Enter" || e.key === " " || e.key === "ArrowRight") && revealed) {
         e.preventDefault();
@@ -243,7 +278,10 @@ export const Review = () => {
     );
   }
 
-  const isOk = revealed && picked === target.answer;
+  const isOk = revealed && (targetCloze ? !!clozeResult?.correct : picked === target.answer);
+  const clozeValues = targetCloze
+    ? (clozeInputs[target.questionVersionId] ?? Array(target.correctAnswers.length).fill(""))
+    : [];
 
   return (
     <div className="screen">
@@ -253,21 +291,20 @@ export const Review = () => {
           <div className="play-dots" aria-hidden="true">
             {order.map((o, i) => {
               const p = picks[o.questionVersionId];
-              return (
-                <i
-                  key={o.questionVersionId}
-                  className={
-                    "play-dot" +
-                    (p !== undefined
-                      ? p === o.answer
-                        ? " is-ok"
-                        : " is-ng"
-                      : i === pos
-                        ? " is-now"
-                        : "")
-                  }
-                />
-              );
+              const cr = clozeResults[o.questionVersionId];
+              const cls =
+                p !== undefined
+                  ? p === o.answer
+                    ? " is-ok"
+                    : " is-ng"
+                  : cr !== undefined
+                    ? cr.correct
+                      ? " is-ok"
+                      : " is-ng"
+                    : i === pos
+                      ? " is-now"
+                      : "";
+              return <i key={o.questionVersionId} className={"play-dot" + cls} />;
             })}
           </div>
           <div className="play-count" aria-live="polite">
@@ -293,40 +330,94 @@ export const Review = () => {
               <Link to={`/play/${target.quizId}`}>{target.quizTitle}</Link>{" "}
               <BookmarkButton questionId={target.questionId} />
             </p>
-            <p className="q-statement rich">
-              <RichText text={target.statement} />
-            </p>
-            <div className="choices" role="group" aria-label="選択肢">
-              {target.choices.map((text, idx) => {
-                const n = idx + 1;
-                let cls = "choice";
-                if (revealed) {
-                  if (n === target.answer) cls += " is-correct";
-                  else if (n === picked) cls += " is-wrong";
-                  else cls += " is-dim";
-                }
-                return (
+            {targetCloze ? (
+              <form
+                className="cloze-form"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  if (!revealed) submitCloze();
+                }}
+              >
+                <div className="q-statement rich cloze-statement">
+                  <ClozeStatement
+                    statement={target.statement}
+                    values={clozeValues}
+                    status={
+                      revealed
+                        ? (clozeResult?.details ?? []).map((d) => (d.correct ? "ok" : "ng"))
+                        : undefined
+                    }
+                    answers={
+                      revealed ? (clozeResult?.details ?? []).map((d) => d.answer) : undefined
+                    }
+                    editable={!revealed}
+                    disabled={clozeBusy}
+                    autoFocusFirst={!revealed}
+                    onChange={(n, v) =>
+                      setClozeInputs((prev) => {
+                        const cur = [...(prev[target.questionVersionId] ?? clozeValues)];
+                        cur[n - 1] = v;
+                        return { ...prev, [target.questionVersionId]: cur };
+                      })
+                    }
+                  />
+                </div>
+                {!revealed && (
                   <button
-                    key={n}
-                    type="button"
-                    className={cls}
-                    disabled={revealed}
-                    onClick={() => pick(n)}
+                    type="submit"
+                    className="btn btn-primary btn-block"
+                    disabled={
+                      clozeBusy ||
+                      clozeValues.length !== target.correctAnswers.length ||
+                      clozeValues.some((s) => !s.trim())
+                    }
                   >
-                    <span className="choice-key" aria-hidden="true">
-                      {n}
-                    </span>
-                    <span className="choice-label rich">
-                      <RichText text={text} />
-                    </span>
+                    回答する
                   </button>
-                );
-              })}
-            </div>
-            <p className="muted" style={{ textAlign: "center" }}>
-              <span className="kbd">1</span> – <span className="kbd">4</span> で回答 ·{" "}
-              <span className="kbd">Enter</span> で次へ
-            </p>
+                )}
+                <p className="muted" style={{ textAlign: "center" }}>
+                  全{target.correctAnswers.length}個の空欄を埋めて回答 ·{" "}
+                  <span className="kbd">Enter</span> で次へ
+                </p>
+              </form>
+            ) : (
+              <>
+                <p className="q-statement rich">
+                  <RichText text={target.statement} />
+                </p>
+                <div className="choices" role="group" aria-label="選択肢">
+                  {target.choices.map((text, idx) => {
+                    const n = idx + 1;
+                    let cls = "choice";
+                    if (revealed) {
+                      if (n === target.answer) cls += " is-correct";
+                      else if (n === picked) cls += " is-wrong";
+                      else cls += " is-dim";
+                    }
+                    return (
+                      <button
+                        key={n}
+                        type="button"
+                        className={cls}
+                        disabled={revealed}
+                        onClick={() => pick(n)}
+                      >
+                        <span className="choice-key" aria-hidden="true">
+                          {n}
+                        </span>
+                        <span className="choice-label rich">
+                          <RichText text={text} />
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+                <p className="muted" style={{ textAlign: "center" }}>
+                  <span className="kbd">1</span> – <span className="kbd">4</span> で回答 ·{" "}
+                  <span className="kbd">Enter</span> で次へ
+                </p>
+              </>
+            )}
           </div>
         </div>
         <div className={`sheet${revealed ? " is-open" : ""}${expCollapsed ? " is-collapsed" : ""}`}>
@@ -336,7 +427,13 @@ export const Review = () => {
                 <span className="sheet-badge" aria-hidden="true">
                   {isOk ? "○" : "×"}
                 </span>
-                <span>{isOk ? "正解！よく直せたね" : `不正解… 正解は ${target.answer} 番`}</span>
+                <span>
+                  {isOk
+                    ? "正解！よく直せたね"
+                    : targetCloze
+                      ? `不正解… 正解は ${formatClozeAnswers((clozeResult?.details ?? []).map((d) => d.answer))}`
+                      : `不正解… 正解は ${target.answer} 番`}
+                </span>
                 <span className="sheet-score">
                   現在 {correctCount} / {doneCount} 正解
                   {(() => {

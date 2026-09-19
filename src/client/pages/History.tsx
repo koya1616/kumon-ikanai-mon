@@ -5,7 +5,7 @@
 // ?a=<attemptId> で特定の回を開いた状態で表示できる (結果画面などからの導線)。
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router";
-import { api, fmtDuration } from "../api";
+import { api, fmtDuration, isCloze } from "../api";
 import type {
   AttemptDetail,
   AttemptRecord,
@@ -15,6 +15,7 @@ import type {
   QuizMeta,
 } from "../api";
 import { BookmarkButton } from "../bookmark";
+import { ClozeStatement, formatClozeAnswers } from "../cloze";
 import { RichText } from "../rich";
 import { Crumbs, EmptyState, Skeletons, Stars } from "../ui";
 
@@ -468,16 +469,20 @@ const QuestionRow = ({
       </div>
       {open && (
         <div className="hx-q-body">
-          <ol className="hx-choices">
-            {q.choices.map((c, i) => (
-              <li key={i} className={i + 1 === q.correctAnswer ? "is-correct" : ""}>
-                <span className="hx-key">{i + 1 === q.correctAnswer ? "○" : i + 1}</span>
-                <span className="rich">
-                  <RichText text={c} />
-                </span>
-              </li>
-            ))}
-          </ol>
+          {isCloze(q.questionType) ? (
+            <p className="hx-cloze-answer">正解: {formatClozeAnswers(q.correctAnswers)}</p>
+          ) : (
+            <ol className="hx-choices">
+              {q.choices.map((c, i) => (
+                <li key={i} className={i + 1 === q.correctAnswer ? "is-correct" : ""}>
+                  <span className="hx-key">{i + 1 === q.correctAnswer ? "○" : i + 1}</span>
+                  <span className="rich">
+                    <RichText text={c} />
+                  </span>
+                </li>
+              ))}
+            </ol>
+          )}
           {q.explanation && (
             <div className="exp rich">
               <RichText text={q.explanation} />
@@ -588,27 +593,34 @@ const AttemptPanel = ({
         </div>
         {detail ? (
           <ol className="hx-cells" aria-label="答案用紙">
-            {detail.items.map((it) => (
-              <li key={it.attemptQuestionId}>
-                <a
-                  href={`#hx-item-${it.attemptQuestionId}`}
-                  className={`hx-cell ${it.correct === true ? "is-ok" : it.picked === null ? "is-skip" : "is-ng"}`}
-                  onClick={(e) => {
-                    e.preventDefault();
-                    if (it.correct === true) setOnlyWrong(false);
-                    requestAnimationFrame(() =>
-                      document
-                        .getElementById(`hx-item-${it.attemptQuestionId}`)
-                        ?.scrollIntoView({ behavior: "smooth", block: "center" }),
-                    );
-                  }}
-                  aria-label={`第${it.position}問 ${it.correct === true ? "正解" : it.picked === null ? "未回答" : "不正解"}`}
-                >
-                  <small>{it.position}</small>
-                  {it.correct === true ? "○" : it.picked === null ? "－" : "×"}
-                </a>
-              </li>
-            ))}
+            {detail.items.map((it) => {
+              const answered = isCloze(it.questionType)
+                ? it.pickedAnswers.length > 0
+                : it.picked !== null;
+              const cell = it.correct === true ? "is-ok" : !answered ? "is-skip" : "is-ng";
+              const label = it.correct === true ? "正解" : !answered ? "未回答" : "不正解";
+              return (
+                <li key={it.attemptQuestionId}>
+                  <a
+                    href={`#hx-item-${it.attemptQuestionId}`}
+                    className={`hx-cell ${cell}`}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      if (it.correct === true) setOnlyWrong(false);
+                      requestAnimationFrame(() =>
+                        document
+                          .getElementById(`hx-item-${it.attemptQuestionId}`)
+                          ?.scrollIntoView({ behavior: "smooth", block: "center" }),
+                      );
+                    }}
+                    aria-label={`第${it.position}問 ${label}`}
+                  >
+                    <small>{it.position}</small>
+                    {it.correct === true ? "○" : !answered ? "－" : "×"}
+                  </a>
+                </li>
+              );
+            })}
           </ol>
         ) : failed === current.id ? (
           <p className="muted">詳細を取得できませんでした</p>
@@ -649,7 +661,17 @@ const AttemptPanel = ({
                     className={`review-mark ${it.correct ? "is-ok" : "is-ng"}`}
                     aria-hidden="true"
                   >
-                    {it.picked === null ? "－" : it.correct ? "○" : "×"}
+                    {isCloze(it.questionType)
+                      ? it.pickedAnswers.length
+                        ? it.correct
+                          ? "○"
+                          : "×"
+                        : "－"
+                      : it.picked === null
+                        ? "－"
+                        : it.correct
+                          ? "○"
+                          : "×"}
                   </span>
                   <span className="grow">
                     <span className="hx-qno">第{it.position}問</span>
@@ -660,23 +682,52 @@ const AttemptPanel = ({
                   <BookmarkButton questionId={it.questionId} />
                 </div>
                 <div className="review-body">
-                  {it.picked === null ? (
-                    <div className="muted">未回答</div>
+                  {isCloze(it.questionType) ? (
+                    <>
+                      {it.pickedAnswers.length ? (
+                        <div className={`review-your ${it.correct ? "is-ok" : "is-ng"}`}>
+                          <ClozeStatement
+                            statement={it.statement}
+                            values={it.pickedAnswers}
+                            status={it.pickedAnswers.map((_, i) =>
+                              it.correctAnswers[i] !== undefined &&
+                              it.pickedAnswers[i]!.trim() === it.correctAnswers[i]
+                                ? "ok"
+                                : "ng",
+                            )}
+                            answers={it.correctAnswers}
+                          />
+                        </div>
+                      ) : (
+                        <div className="muted">未回答</div>
+                      )}
+                      {(!it.correct || !it.pickedAnswers.length) && (
+                        <div className="review-correct">
+                          正解: {formatClozeAnswers(it.correctAnswers)}
+                        </div>
+                      )}
+                    </>
                   ) : (
-                    <div className={`review-your ${it.correct ? "is-ok" : "is-ng"}`}>
-                      あなたの回答: {it.picked}.{" "}
-                      <span className="review-inline rich">
-                        <RichText text={it.choices[it.picked - 1] ?? it.pickedText ?? ""} />
-                      </span>
-                    </div>
-                  )}
-                  {(it.picked === null || !it.correct) && (
-                    <div className="review-correct">
-                      正解: {it.correctAnswer}.{" "}
-                      <span className="review-inline rich">
-                        <RichText text={it.choices[it.correctAnswer - 1] ?? ""} />
-                      </span>
-                    </div>
+                    <>
+                      {it.picked === null ? (
+                        <div className="muted">未回答</div>
+                      ) : (
+                        <div className={`review-your ${it.correct ? "is-ok" : "is-ng"}`}>
+                          あなたの回答: {it.picked}.{" "}
+                          <span className="review-inline rich">
+                            <RichText text={it.choices[it.picked - 1] ?? it.pickedText ?? ""} />
+                          </span>
+                        </div>
+                      )}
+                      {(it.picked === null || !it.correct) && (
+                        <div className="review-correct">
+                          正解: {it.correctAnswer}.{" "}
+                          <span className="review-inline rich">
+                            <RichText text={it.choices[it.correctAnswer - 1] ?? ""} />
+                          </span>
+                        </div>
+                      )}
+                    </>
                   )}
                   {it.explanation && (
                     <div className="exp rich">

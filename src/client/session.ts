@@ -1,6 +1,6 @@
 // 出題セッション (Play → Result への引き継ぎ)。旧 state.session に対応。
 // メモリ保持のみ (リロードで失われるのは旧仕様と同じ)。
-import type { PlayQuestion, QuizMeta } from "./api";
+import type { ClozeDetail, PlayQuestion, QuizMeta } from "./api";
 
 export interface SessionAnswer {
   q: PlayQuestion;
@@ -8,6 +8,10 @@ export interface SessionAnswer {
   ok: boolean;
   correct: number;
   exp: string;
+  /** cloze_text の入力 (single_choiceでは空配列) */
+  inputs: string[];
+  /** cloze_text の空欄単位明細 (single_choiceでは空配列) */
+  details: ClozeDetail[];
 }
 
 export interface PlaySession {
