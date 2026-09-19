@@ -4,12 +4,6 @@ JSONファイルを作成し、管理画面の「JSONで一括登録」から登
 
 `seed.sql` は全消去型のため**本番に流さないこと**。
 
-## 前提
-
-- マイグレ `0004_cloze.sql` 適用済みであること
-- 本番URL（例: `https://kumon-ikanai-mon.xxx.workers.dev`）
-- Basic認証の `BASIC_USER` / `BASIC_PASS`（管理画面アクセス時に使用）
-
 ## 1. JSONファイルを作成する
 
 `data/quizzes/example.json` をコピーして編集する。必ずJSONファイルを作成すること（直書き・SQL直投入はしない）。
@@ -56,31 +50,49 @@ JSONファイルを作成し、管理画面の「JSONで一括登録」から登
 - `difficulty` 1〜5、`quiz.status` 省略時は `published`（登録後すぐ出題される）。下書きにしたい場合のみ `"draft"` を明示する
 - 同名 `category` / `topic` は再利用される。同名 `quiz` が同じtopicに存在すると中断（誤上書き防止）
 
-## 2. 管理画面から登録する
+## 2. 問題文の品質ルール
 
-1. 管理画面 `https://<本番URL>/#/admin` を開く
-2. 「JSONで一括登録」に作成したJSONファイルを選択（または内容を貼り付け）する
-3. 「内容を確認」で `category › topic › title` と10問表示を確認する
-4. 「JSONで登録する」を押す
+- 最新の情報を取得し、正確性を重視すること
+- `explanation` には正解の解説と、なぜ他の選択肢（不正解）が違うのかを含めること
+- 4択問題の場合
+  - 選択肢の文量は均等になるようにすること
+  - 問題文と4択の選択肢は文量が多くなっても良い
+- 穴埋め問題の場合
+  - 文量は多くなっても良い
+  - 空欄は1問あたり1〜5個作って良い
 
-## 3. 確認する
+## 3. 本番データを確認する
 
-1. 管理画面で10問（4択5問＋穴埋め5問）が登録されたことを目視確認する
-2. `GET https://<本番URL>/api/quizzes/<id>/play` が10問返すことを確認する（ブラウザで開いて確認可）
-3. `status: draft` で投入した場合のみ、管理画面または `PUT /api/quizzes/:id` で `published` に変更して公開する
+JSONファイルを作成する前に、本番の問題と重複がないこと、既存のカテゴリ・トピック分類を確認する。
 
-## トラブルシュート
+テーブル一覧を確認する:
 
-| 症状                             | 原因・対処                                                             |
-| -------------------------------- | ---------------------------------------------------------------------- |
-| 401 認証失敗                     | Basic認証の値が不一致。Secrets設定を確認                               |
-| 同名quizが既にあります           | 同一topicに同名あり。新規タイトルにするか、既存は管理画面で編集        |
-| questions はちょうど10問必要です | 10問揃える（内訳: 4択5問＋穴埋め5問。出題条件が10問固定のため）         |
-| 空欄マーカー関連のエラー         | `{{n}}` の書き損じ（全角括弧・スペース混入・飛び番等）か、`answers` との個数不一致。綴りが `cloze_text` であることも確認 |
-| quizは作成済み・問題登録失敗     | quizだけ作成済み。管理画面 `#/admin` から問題を追記する                |
+```bash
+pnpm exec wrangler d1 execute kumon-ikanai-mon-db --remote --command "SELECT name FROM sqlite_master WHERE type='table';"
+```
 
-## 注意
+既存のカテゴリ・トピック・クイズ分類を確認する（新規クイズの分類分けの参考にする）:
 
-- コマンドから実行しない（コマンドから実行できる関連コードは削除済み）
-- `seed.sql` を本番に流さない（全データ削除される）
-- 認証情報はコミットしない
+```bash
+pnpm exec wrangler d1 execute kumon-ikanai-mon-db --remote --command "SELECT c.title AS category, t.title AS topic, q.title AS quiz, q.difficulty, q.status FROM quizzes q JOIN topics t ON t.id=q.topic_id JOIN categories c ON c.id=t.category_id ORDER BY c.title, t.title, q.title;"
+```
+
+問題文の重複がないことを確認する。完全一致だけでなく、似たような問題も登録しないこと。
+
+完全一致の重複を確認する（結果が0件なら完全一致の重複なし）:
+
+```bash
+pnpm exec wrangler d1 execute kumon-ikanai-mon-db --remote --command "SELECT v.statement AS s, COUNT(*) AS cnt FROM question_versions v JOIN questions q ON q.current_version_id = v.id GROUP BY v.statement HAVING cnt > 1;"
+```
+
+似た問題の確認は、新規問題のキーワードで検索し、ヒットした問題文を目視で見比べる:
+
+```bash
+pnpm exec wrangler d1 execute kumon-ikanai-mon-db --remote --command "SELECT z.title AS quiz, v.statement AS s FROM question_versions v JOIN questions q ON q.current_version_id = v.id JOIN quizzes z ON z.id = q.quiz_id WHERE v.statement LIKE '%<キーワード>%';"
+```
+
+同じトピックの既存問題を一覧して見比べる:
+
+```bash
+pnpm exec wrangler d1 execute kumon-ikanai-mon-db --remote --command "SELECT z.title AS quiz, v.statement AS s FROM question_versions v JOIN questions q ON q.current_version_id = v.id JOIN quizzes z ON z.id = q.quiz_id JOIN topics t ON t.id = z.topic_id WHERE t.title = '<トピック名>';"
+```
