@@ -5,7 +5,7 @@
 // ?a=<attemptId> で特定の回を開いた状態で表示できる (結果画面などからの導線)。
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router";
-import { api, fmtDuration, isCloze } from "../api";
+import { api, fmtDuration, isCloze, isOrder } from "../api";
 import type {
   AttemptDetail,
   AttemptRecord,
@@ -16,9 +16,10 @@ import type {
 } from "../api";
 import { BookmarkButton } from "../bookmark";
 import { ClozeAnswerList, ClozeStatement } from "../cloze";
+import { OrderAnswerList, OrderBlocks } from "../order";
 import { RichText } from "../rich";
 import { Crumbs, EmptyState, Skeletons, Stars } from "../ui";
-import { isClozeAnswerEqual } from "../../domain";
+import { isClozeAnswerEqual, isOrderItemEqual } from "../../domain";
 
 /** 定着とみなす直近の連続正解数 (苦手復習の解消条件と揃える) */
 const SOLID_STREAK = 2;
@@ -475,6 +476,11 @@ const QuestionRow = ({
               <span>正解:</span>
               <ClozeAnswerList answers={q.correctAnswers} />
             </div>
+          ) : isOrder(q.questionType) ? (
+            <div className="hx-order-answer">
+              <span>正しい順序:</span>
+              <OrderAnswerList answers={q.correctOrder} />
+            </div>
           ) : (
             <ol className="hx-choices">
               {q.choices.map((c, i) => (
@@ -609,7 +615,9 @@ const AttemptPanel = ({
             {detail.items.map((it) => {
               const answered = isCloze(it.questionType)
                 ? it.pickedAnswers.length > 0
-                : it.picked !== null;
+                : isOrder(it.questionType)
+                  ? it.pickedOrder.length > 0
+                  : it.picked !== null;
               const cell = it.correct === true ? "is-ok" : !answered ? "is-skip" : "is-ng";
               const label = it.correct === true ? "正解" : !answered ? "未回答" : "不正解";
               return (
@@ -680,11 +688,17 @@ const AttemptPanel = ({
                           ? "○"
                           : "×"
                         : "－"
-                      : it.picked === null
-                        ? "－"
-                        : it.correct
-                          ? "○"
-                          : "×"}
+                      : isOrder(it.questionType)
+                        ? it.pickedOrder.length
+                          ? it.correct
+                            ? "○"
+                            : "×"
+                          : "－"
+                        : it.picked === null
+                          ? "－"
+                          : it.correct
+                            ? "○"
+                            : "×"}
                   </span>
                   <span className="grow">
                     <span className="hx-qno">第{it.position}問</span>
@@ -724,6 +738,28 @@ const AttemptPanel = ({
                         <div className="review-correct">
                           <span>正解:</span>
                           <ClozeAnswerList answers={it.correctAnswers} />
+                        </div>
+                      )}
+                    </>
+                  ) : isOrder(it.questionType) ? (
+                    <>
+                      {it.pickedOrder.length ? (
+                        <div className={`review-your ${it.correct ? "is-ok" : "is-ng"}`}>
+                          <OrderBlocks
+                            key={`hx-${it.attemptQuestionId}`}
+                            initial={it.pickedOrder}
+                            status={it.pickedOrder.map((t, i) =>
+                              isOrderItemEqual(t, it.correctOrder[i] ?? ""),
+                            )}
+                          />
+                        </div>
+                      ) : (
+                        <div className="muted">未回答</div>
+                      )}
+                      {(!it.correct || !it.pickedOrder.length) && (
+                        <div className="review-correct">
+                          <span>正しい順序:</span>
+                          <OrderAnswerList answers={it.correctOrder} />
                         </div>
                       )}
                     </>

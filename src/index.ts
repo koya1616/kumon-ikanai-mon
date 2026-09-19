@@ -11,7 +11,10 @@ import {
   idParamSchema,
   importEnvelopeSchema,
   isClozePayload,
+  isOrderPayload,
   normalizeImportQuestion,
+  orderQuestionCreateSchema,
+  orderQuestionSchema,
   questionCreateSchema,
   questionSchema,
   quizBodySchema,
@@ -450,6 +453,18 @@ async function route(req: Request, env: Env): Promise<Response> {
         });
         return json({ id }, 201);
       }
+      if (isOrderPayload(body.value)) {
+        const v = validated(orderQuestionCreateSchema.safeParse(body.value));
+        if ("res" in v) return v.res;
+        const { quizId, ...q } = v.data;
+        const id = await repo.createOrderQuestion(db, quizId, {
+          questionType: "order_blocks",
+          statement: q.statement,
+          items: q.items,
+          explanation: q.explanation ?? "",
+        });
+        return json({ id }, 201);
+      }
       const v = validated(questionCreateSchema.safeParse(body.value));
       if ("res" in v) return v.res;
       const { quizId, ...q } = v.data;
@@ -462,7 +477,7 @@ async function route(req: Request, env: Env): Promise<Response> {
   }
 
   // 10問保存: versioning方式 (履歴があっても新version発行で保存可。問題数削減のみ履歴ありは不可)
-  // 4択・穴埋め混在可 (要素の questionType で判別する)
+  // 4択・穴埋め・並べ替え混在可 (要素の questionType で判別する)
   if (path === "/api/questions/batch" && method === "POST") {
     const body = await readJson(req);
     if ("res" in body) return body.res;
@@ -499,6 +514,15 @@ async function route(req: Request, env: Env): Promise<Response> {
               questionType: "cloze_text",
               statement: v.data.statement,
               answers: v.data.answers,
+              explanation: v.data.explanation ?? "",
+            });
+          } else if (isOrderPayload(body.value)) {
+            const v = validated(orderQuestionSchema.safeParse(body.value));
+            if ("res" in v) return v.res;
+            await repo.updateOrderQuestion(db, questionId, {
+              questionType: "order_blocks",
+              statement: v.data.statement,
+              items: v.data.items,
               explanation: v.data.explanation ?? "",
             });
           } else {
@@ -709,6 +733,7 @@ async function route(req: Request, env: Env): Promise<Response> {
           await repo.recordAnswer(db, attemptId, v.data.attemptQuestionId, {
             choice: v.data.choice,
             answers: v.data.answers,
+            order: v.data.order,
           }),
         );
       } catch (e) {

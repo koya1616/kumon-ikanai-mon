@@ -312,6 +312,15 @@
   .hx-cloze-answer .cloze-answers {
     margin: 0;
   }
+  .hx-order-answer {
+    color: var(--moegi);
+    font-weight: 700;
+    display: grid;
+    gap: 6px;
+  }
+  .hx-order-answer .order-answers {
+    margin: 0;
+  }
   .review-body {
     padding: 0 14px 14px 52px;
     display: flex;

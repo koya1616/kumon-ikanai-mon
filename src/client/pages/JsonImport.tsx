@@ -160,8 +160,10 @@ export const JsonImportCard = () => {
         />
         <span className="muted">
           data/quizzes/example.json と同形式。questionsは10問ちょうど。穴埋めは{" "}
-          {`{ "questionType": "cloze_text", "statement": "徳川{{1}}は…", "answers": ["家康"], "explanation": "…" }`}{" "}
-          の形式で混在可。
+          {`{ "questionType": "cloze_text", "statement": "徳川{{1}}は…", "answers": ["家康"], "explanation": "…" }`}
+          、並べ替えは{" "}
+          {`{ "questionType": "order_blocks", "statement": "正しい順に並べ替えよ", "items": ["SELECT *", "FROM t", "WHERE x = 1", "ORDER BY y"], "explanation": "…" }`}{" "}
+          の形式で混在可（並べ替えは4〜20ブロック・重複不可）。
         </span>
       </div>
       <div className="actions">

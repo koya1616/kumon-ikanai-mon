@@ -1,8 +1,13 @@
 // API クライアントとドメイン型 (サーバの REST 契約に対応)。
 // サーバのルート定義 (src/index.ts) と 1:1 に対応させること。
-import { QUESTIONS_PER_QUIZ } from "../domain";
+import {
+  ORDER_ITEM_MAX_LENGTH,
+  ORDER_MAX_ITEMS,
+  ORDER_MIN_ITEMS,
+  QUESTIONS_PER_QUIZ,
+} from "../domain";
 
-export { QUESTIONS_PER_QUIZ };
+export { ORDER_ITEM_MAX_LENGTH, ORDER_MAX_ITEMS, ORDER_MIN_ITEMS, QUESTIONS_PER_QUIZ };
 
 export interface Category {
   id: number;
@@ -35,7 +40,7 @@ export interface Quiz {
   questionCount: number;
 }
 
-export type QuestionType = "single_choice" | "cloze_text";
+export type QuestionType = "single_choice" | "cloze_text" | "order_blocks";
 
 export interface ClozeBlank {
   index: number;
@@ -48,7 +53,14 @@ export interface ClozeDetail {
   answer: string;
 }
 
+export interface OrderDetail {
+  position: number;
+  correct: boolean;
+  answer: string;
+}
+
 export const isCloze = (t: QuestionType | undefined): boolean => t === "cloze_text";
+export const isOrder = (t: QuestionType | undefined): boolean => t === "order_blocks";
 
 export interface Question {
   id: number;
@@ -58,6 +70,8 @@ export interface Question {
   choices: string[];
   answer: number;
   blanks: ClozeBlank[];
+  /** order_blocks の正順ブロック (他型では空配列) */
+  items: string[];
   explanation: string;
 }
 
@@ -70,6 +84,9 @@ export interface PlayQuestion {
   statement: string;
   choices: string[];
   blankCount: number;
+  /** order_blocks の出題ブロック (シャッフル済み。他型では空配列) */
+  items: string[];
+  itemCount: number;
   /** 表示順→元の番号のマップ。choicesは表示順に並べ替え済み。未設定=シャッフルなし(恒等写像) */
   choiceMap?: number[];
 }
@@ -107,6 +124,9 @@ export interface AttemptStateAnswer {
   explanation: string;
   answers: string[];
   details: ClozeDetail[];
+  /** order_blocks の提出順・位置単位明細 (他型では空配列) */
+  order: string[];
+  orderDetails: OrderDetail[];
 }
 
 export interface AttemptState {
@@ -150,6 +170,8 @@ export interface AttemptDetailItem {
   correct: boolean | null;
   pickedAnswers: string[];
   correctAnswers: string[];
+  pickedOrder: string[];
+  correctOrder: string[];
   explanation: string;
 }
 
@@ -172,6 +194,7 @@ export interface QuestionInsight {
   choices: string[];
   correctAnswer: number;
   correctAnswers: string[];
+  correctOrder: string[];
   explanation: string;
   /** 古い順。null = 未回答 */
   results: (boolean | null)[];
@@ -196,6 +219,9 @@ export interface MistakeItem {
   choices: string[];
   answer: number;
   correctAnswers: string[];
+  /** order_blocks の出題ブロック (シャッフル済み)・正順 */
+  items: string[];
+  correctOrder: string[];
   explanation: string;
   mistakeCount: number;
   lastWrongAt: string | null;
@@ -212,6 +238,7 @@ export interface BookmarkItem {
   choices: string[];
   answer: number;
   correctAnswers: string[];
+  correctOrder: string[];
   explanation: string;
   bookmarkedAt: string;
 }
@@ -222,6 +249,8 @@ export interface ReviewAnswerResult {
   correctAnswer: number;
   explanation: string;
   details: ClozeDetail[];
+  orderDetails: OrderDetail[];
+  correctOrder: string[];
   streak: number;
   resolved: boolean;
   remaining: number;
@@ -233,6 +262,8 @@ export interface AnswerResult {
   correctAnswer: number;
   explanation: string;
   details: ClozeDetail[];
+  orderDetails: OrderDetail[];
+  correctOrder: string[];
 }
 
 export const fmtDuration = (sec: number | null | undefined): string => {

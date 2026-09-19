@@ -1,16 +1,17 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router";
-import { api, isCloze } from "../api";
+import { api, isCloze, isOrder } from "../api";
 import type { AttemptRecord } from "../api";
 import { clearResume } from "../resume";
 import { ClozeAnswerList, ClozeFieldList, ClozeStatement } from "../cloze";
+import { OrderAnswerList, OrderBlocks } from "../order";
 import { RichText } from "../rich";
 import { usePlaySession } from "../session";
 import type { SessionAnswer } from "../session";
 import { BookmarkButton } from "../bookmark";
 import { Crumbs, fmtDate, Ring, Stars } from "../ui";
 import { useTree } from "../tree";
-import { isClozeAnswerEqual } from "../../domain";
+import { isClozeAnswerEqual, isOrderItemEqual } from "../../domain";
 
 type Tone = "is-full" | "is-good" | "is-mid" | "is-bad";
 
@@ -349,6 +350,22 @@ const ReviewCard = ({
               </div>
             )}
           </>
+        ) : isOrder(a.q.questionType) ? (
+          <>
+            <div className={`review-your ${a.ok ? "is-ok" : "is-ng"}`}>
+              <OrderBlocks
+                key={`result-${i}`}
+                initial={a.order.length ? a.order : a.q.items}
+                status={a.orderDetails.map((d) => (d.correct ? true : false))}
+              />
+            </div>
+            {!a.ok && (
+              <div className="review-correct">
+                <span>正しい順序:</span>
+                <OrderAnswerList answers={a.correctOrder} />
+              </div>
+            )}
+          </>
         ) : (
           <>
             <div className={`review-your ${a.ok ? "is-ok" : "is-ng"}`}>
@@ -391,6 +408,7 @@ const DrillCard = ({
   const qIndex = drill.order[drill.pos]!;
   const target = ses_answers[qIndex]!;
   const targetCloze = isCloze(target.q.questionType);
+  const targetOrder = isOrder(target.q.questionType);
   const picked = drill.picks[qIndex];
   const revealed = picked !== undefined;
   const correctCount = Object.entries(drill.picks).filter(
@@ -398,7 +416,7 @@ const DrillCard = ({
   ).length;
 
   const pick = (n: number) => {
-    if (revealed || targetCloze) return;
+    if (revealed || targetCloze || targetOrder) return;
     onChange({
       ...drill,
       picks: { ...drill.picks, [qIndex]: n },
@@ -421,8 +439,33 @@ const DrillCard = ({
       doneCount: drill.doneCount + 1,
     });
   };
-  const drillRevealed = targetCloze ? drillOk !== null : revealed;
-  const drillCorrect = targetCloze ? drillOk === true : picked === target.correct;
+  // 並べ替えの見直しも手元採点 (正順と照合する)
+  const [drillOrder, setDrillOrder] = useState<string[]>(() => [...target.q.items]);
+  const [drillOrderOk, setDrillOrderOk] = useState<boolean | null>(null);
+  const submitDrillOrder = () => {
+    if (drillOrderOk !== null) return;
+    const correct = target.correctOrder;
+    const ok =
+      correct.length > 0 &&
+      drillOrder.length === correct.length &&
+      drillOrder.every((t, i) => isOrderItemEqual(t, correct[i]!));
+    setDrillOrderOk(ok);
+    onChange({
+      ...drill,
+      picks: { ...drill.picks, [qIndex]: ok ? 0 : -1 },
+      doneCount: drill.doneCount + 1,
+    });
+  };
+  const drillRevealed = targetCloze
+    ? drillOk !== null
+    : targetOrder
+      ? drillOrderOk !== null
+      : revealed;
+  const drillCorrect = targetCloze
+    ? drillOk === true
+    : targetOrder
+      ? drillOrderOk === true
+      : picked === target.correct;
 
   const next = () => {
     if (drill.pos + 1 < drill.order.length) {
@@ -455,6 +498,7 @@ const DrillCard = ({
             submitDrillCloze();
           }}
         >
+          {" "}
           <div className="q-statement rich cloze-statement">
             <ClozeStatement
               statement={target.q.statement}
@@ -500,6 +544,33 @@ const DrillCard = ({
             </button>
           )}
         </form>
+      ) : targetOrder ? (
+        <form
+          className="order-form"
+          onSubmit={(e) => {
+            e.preventDefault();
+            submitDrillOrder();
+          }}
+        >
+          <p className="q-statement rich">
+            <RichText text={target.q.statement} />
+          </p>
+          <OrderBlocks
+            key={`drill-${qIndex}`}
+            initial={target.q.items}
+            status={
+              drillRevealed
+                ? drillOrder.map((t, i) => isOrderItemEqual(t, target.correctOrder[i] ?? ""))
+                : undefined
+            }
+            onChange={setDrillOrder}
+          />
+          {!drillRevealed && (
+            <button type="submit" className="btn btn-primary btn-block">
+              回答する
+            </button>
+          )}
+        </form>
       ) : (
         <>
           <p className="q-statement rich">
@@ -534,20 +605,23 @@ const DrillCard = ({
           </div>
         </>
       )}
-      {(targetCloze ? drillRevealed : revealed) && (
+      {(targetCloze || targetOrder ? drillRevealed : revealed) && (
         <div className="drill-feedback">
           <p className={drillCorrect ? "is-good" : "is-bad"}>
             {drillCorrect
               ? "正解！よく直せたね"
               : targetCloze
                 ? "正解は…"
-                : `正解は ${target.correct} 番`}
+                : targetOrder
+                  ? "正しい順序は…"
+                  : `正解は ${target.correct} 番`}
             {" · "}
             現在 {correctCount} / {drill.doneCount} 正解
           </p>
           {!drillCorrect && targetCloze && (
             <ClozeAnswerList answers={target.details.map((d) => d.answer)} />
           )}
+          {!drillCorrect && targetOrder && <OrderAnswerList answers={target.correctOrder} />}
           {target.exp && (
             <div className="exp rich">
               <RichText text={target.exp} />

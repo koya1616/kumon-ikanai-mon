@@ -2,7 +2,7 @@
 // メモリ保持のみ (リロードで失われる)。
 import { createContext, useContext, useMemo, useState } from "react";
 import type { ReactNode } from "react";
-import type { ClozeDetail, PlayQuestion, QuizMeta } from "./api";
+import type { ClozeDetail, OrderDetail, PlayQuestion, QuizMeta } from "./api";
 
 export interface SessionAnswer {
   q: PlayQuestion;
@@ -14,6 +14,12 @@ export interface SessionAnswer {
   inputs: string[];
   /** cloze_text の空欄単位明細 (single_choiceでは空配列) */
   details: ClozeDetail[];
+  /** order_blocks の提出順 (他型では空配列) */
+  order: string[];
+  /** order_blocks の位置単位明細 (他型では空配列) */
+  orderDetails: OrderDetail[];
+  /** order_blocks の正順 (回答後の開示用。他型では空配列) */
+  correctOrder: string[];
 }
 
 export interface PlaySession {

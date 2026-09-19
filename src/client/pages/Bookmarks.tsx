@@ -3,9 +3,10 @@
 // GET /api/bookmarks はサーバ側でランダム順に返すため、シャッフル = 再取得。
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router";
-import { api, isCloze } from "../api";
+import { api, isCloze, isOrder } from "../api";
 import type { BookmarkItem } from "../api";
 import { ClozeAnswerList, ClozeStatement } from "../cloze";
+import { OrderAnswerList, OrderBlocks } from "../order";
 import { RichText } from "../rich";
 import { EmptyState, Icon, Skeletons } from "../ui";
 
@@ -68,7 +69,8 @@ export const Bookmarks = () => {
         it.statement.toLowerCase().includes(q) ||
         it.quizTitle.toLowerCase().includes(q) ||
         it.choices.some((c) => c.toLowerCase().includes(q)) ||
-        it.correctAnswers.some((c) => c.toLowerCase().includes(q))
+        it.correctAnswers.some((c) => c.toLowerCase().includes(q)) ||
+        it.correctOrder.some((c) => c.toLowerCase().includes(q))
       );
     });
   }, [state, kw, quizId]);
@@ -215,6 +217,17 @@ const BookmarkCard = ({
             status={revealed ? it.correctAnswers.map(() => "ok" as const) : undefined}
           />
         </div>
+      ) : isOrder(it.questionType) ? (
+        <>
+          <p className="bm-statement rich">
+            <RichText text={it.statement} />
+          </p>
+          <OrderBlocks
+            key={`bm-${it.questionId}-${revealed}`}
+            initial={it.correctOrder}
+            status={revealed ? it.correctOrder.map(() => true) : undefined}
+          />
+        </>
       ) : (
         <>
           <p className="bm-statement rich">
@@ -254,6 +267,11 @@ const BookmarkCard = ({
             <div className="bm-answer">
               <span>正解:</span>
               <ClozeAnswerList answers={it.correctAnswers} />
+            </div>
+          ) : isOrder(it.questionType) ? (
+            <div className="bm-answer">
+              <span>正しい順序:</span>
+              <OrderAnswerList answers={it.correctOrder} />
             </div>
           ) : (
             <p className="bm-answer tnum">正解は {it.answer} 番</p>

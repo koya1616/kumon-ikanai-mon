@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router";
-import { api, isCloze } from "../api";
+import { api, isCloze, isOrder } from "../api";
 import type { AnswerResult, AttemptState, PlayQuestion, QuizMeta } from "../api";
 import { ClozeAnswerList, ClozeFieldList, ClozeStatement, parseClozeBlanks } from "../cloze";
+import { OrderAnswerList, OrderBlocks } from "../order";
 import { useDialog, useDialogOpen } from "../dialog";
 import {
   applyChoiceOrder,
@@ -107,6 +108,9 @@ export const Play = () => {
             exp: a.explanation ?? "",
             inputs: a.answers ?? [],
             details: a.details ?? [],
+            order: a.order ?? [],
+            orderDetails: a.orderDetails ?? [],
+            correctOrder: [],
           });
         }
         setPhase({
@@ -284,7 +288,9 @@ const PlayingScreen = ({ play, onChange }: { play: LivePlay; onChange: (p: LiveP
   const answeredCount = play.answers.length;
   const last = play.index + 1 >= play.questions.length;
   const cloze = isCloze(q.questionType);
+  const ordered = isOrder(q.questionType);
   const blankCount = cloze ? q.blankCount || parseClozeBlanks(q.statement).length : 0;
+  const itemCount = ordered ? q.itemCount || q.items.length : 0;
   // 穴埋め入力は問題IDに紐づけて持ち、別の問題では空から始める
   const [draft, setDraft] = useState<{ id: number | undefined; values: string[] }>({
     id: undefined,
@@ -298,6 +304,12 @@ const PlayingScreen = ({ play, onChange }: { play: LivePlay; onChange: (p: LiveP
     values[n - 1] = v;
     setDraft({ id: q.attemptQuestionId, values });
   };
+  // 並べ替えの現在順は問題IDに紐づけて持つ (初期=出題順)
+  const [orderDraft, setOrderDraft] = useState<{ id: number | undefined; values: string[] }>({
+    id: undefined,
+    values: [],
+  });
+  const orderValues = orderDraft.id === q.attemptQuestionId ? orderDraft.values : q.items;
   const submittable = !cloze || inputs.every((s) => s.trim());
 
   useEffect(() => {
@@ -345,6 +357,9 @@ const PlayingScreen = ({ play, onChange }: { play: LivePlay; onChange: (p: LiveP
                 exp: res.explanation ?? "",
                 inputs: [],
                 details: res.details ?? [],
+                order: [],
+                orderDetails: res.orderDetails ?? [],
+                correctOrder: res.correctOrder ?? [],
               },
             ],
           });
@@ -380,6 +395,9 @@ const PlayingScreen = ({ play, onChange }: { play: LivePlay; onChange: (p: LiveP
               exp: res.explanation ?? "",
               inputs: sent,
               details: res.details ?? [],
+              order: [],
+              orderDetails: res.orderDetails ?? [],
+              correctOrder: res.correctOrder ?? [],
             },
           ],
         });
@@ -389,6 +407,42 @@ const PlayingScreen = ({ play, onChange }: { play: LivePlay; onChange: (p: LiveP
         toast(e.message || "回答を送信できませんでした", "ng");
       });
   }, [play, q, inputs, submittable, onChange, toast]);
+
+  const answerOrder = useCallback(() => {
+    if (play.answers.length > play.index || play.busy) return;
+    const sending = { ...play, busy: true };
+    onChange(sending);
+    const sent = [...orderValues];
+    api<AnswerResult>(`/api/attempts/${play.attemptId}/answers`, {
+      method: "POST",
+      body: { attemptQuestionId: q.attemptQuestionId, order: sent },
+    })
+      .then((res) => {
+        onChange({
+          ...sending,
+          busy: false,
+          answers: [
+            ...sending.answers,
+            {
+              q,
+              choice: 0,
+              ok: !!res.correct,
+              correct: 0,
+              exp: res.explanation ?? "",
+              inputs: [],
+              details: [],
+              order: sent,
+              orderDetails: res.orderDetails ?? [],
+              correctOrder: res.correctOrder ?? [],
+            },
+          ],
+        });
+      })
+      .catch((e: Error) => {
+        onChange({ ...sending, busy: false });
+        toast(e.message || "回答を送信できませんでした", "ng");
+      });
+  }, [play, q, orderValues, onChange, toast]);
 
   // 次へボタンを回答後にフォーカス (Enter ですぐ進める)
   useEffect(() => {
@@ -412,7 +466,7 @@ const PlayingScreen = ({ play, onChange }: { play: LivePlay; onChange: (p: LiveP
     if (dialogOpen) return;
     if (e.key >= "1" && e.key <= "4" && !revealed && !play.busy) {
       const cur = play.questions[play.index];
-      if (cur && !isCloze(cur.questionType)) {
+      if (cur && !isCloze(cur.questionType) && !isOrder(cur.questionType)) {
         const idx = Number(e.key) - 1;
         if (cur.choices[idx] !== undefined) {
           e.preventDefault();
@@ -544,6 +598,41 @@ const PlayingScreen = ({ play, onChange }: { play: LivePlay; onChange: (p: LiveP
                 全{blankCount}個の空欄を埋めて回答 · <span className="kbd">Enter</span> で次へ
               </p>
             </form>
+          ) : ordered ? (
+            <form
+              className="order-form"
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (revealed) next();
+                else answerOrder();
+              }}
+            >
+              <OrderBlocks
+                key={q.attemptQuestionId}
+                initial={revealed ? (result?.order ?? orderValues) : orderValues}
+                status={
+                  revealed
+                    ? (result?.orderDetails ?? []).map((d) => (d.correct ? true : false))
+                    : undefined
+                }
+                disabled={play.busy}
+                onChange={(nextOrder) =>
+                  setOrderDraft({ id: q.attemptQuestionId, values: nextOrder })
+                }
+              />
+              {!revealed && (
+                <button
+                  type="submit"
+                  className="btn btn-primary btn-block"
+                  disabled={play.busy || orderValues.length !== itemCount}
+                >
+                  回答する
+                </button>
+              )}
+              <p className="muted" style={{ textAlign: "center" }}>
+                全{itemCount}個を正しい順序に並べて回答 · <span className="kbd">Enter</span> で次へ
+              </p>
+            </form>
           ) : (
             <>
               <div className="choices" role="group" aria-label="選択肢">
@@ -602,7 +691,9 @@ const PlayingScreen = ({ play, onChange }: { play: LivePlay; onChange: (p: LiveP
                     ? "正解！"
                     : isCloze(result.q.questionType)
                       ? "不正解…"
-                      : `不正解… 正解は ${result.correct} 番`}
+                      : isOrder(result.q.questionType)
+                        ? "不正解… 正しい順序を確認しよう"
+                        : `不正解… 正解は ${result.correct} 番`}
                 </span>
                 <span className="sheet-score">
                   現在 {score} / {play.index + 1} 正解
@@ -618,6 +709,9 @@ const PlayingScreen = ({ play, onChange }: { play: LivePlay; onChange: (p: LiveP
               </div>
               {!result.ok && isCloze(result.q.questionType) && (
                 <ClozeAnswerList answers={result.details.map((d) => d.answer)} />
+              )}
+              {!result.ok && isOrder(result.q.questionType) && (
+                <OrderAnswerList answers={result.correctOrder} />
               )}
               {!expCollapsed && (
                 <div className="sheet-exp rich">

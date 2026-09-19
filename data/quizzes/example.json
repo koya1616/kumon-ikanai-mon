@@ -71,16 +71,21 @@
       "explanation": "readonly 配列は参照OK・変更操作は型エラーになります。"
     },
     {
-      "questionType": "cloze_text",
-      "statement": "次の `s` の型は {{1}} と推論される。\n```ts\nfunction id<T>(x: T): T {\n  return x;\n}\nconst s = id(\"hello\");\n```",
-      "answers": ["string"],
-      "explanation": "呼び出し時に `T = string` と推論されるため、`s` の型は `string` です。"
+      "questionType": "order_blocks",
+      "statement": "次のSQLが正しく動く順序に並べ替えよ。",
+      "items": ["SELECT name FROM users", "WHERE age >= 20", "ORDER BY name", "LIMIT 10"],
+      "explanation": "SELECT → WHERE → ORDER BY → LIMIT の順に書きます。"
     },
     {
-      "questionType": "cloze_text",
-      "statement": "`npx tsc {{1}}` は型チェックのみ行い {{2}} しない。",
-      "answers": ["--noEmit", "出力"],
-      "explanation": "--noEmit は emit せず型エラーの有無だけ確認します。"
+      "questionType": "order_blocks",
+      "statement": "新しいブランチで作業を始めるまでのgit操作を正しい順序に並べ替えよ。",
+      "items": [
+        "git switch -c feature/login",
+        "git add .",
+        "git commit -m \"作業内容\"",
+        "git push -u origin feature/login"
+      ],
+      "explanation": "ブランチ作成 → 追加 → コミット → プッシュの順です。"
     }
   ]
 }

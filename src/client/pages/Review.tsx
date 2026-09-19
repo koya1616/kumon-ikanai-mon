@@ -3,11 +3,12 @@
 // 直近REVIEW_CLEAR_STREAK連続正解で苦手解消となる。
 import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router";
-import { api, isCloze } from "../api";
+import { api, isCloze, isOrder } from "../api";
 import type { MistakeItem, ReviewAnswerResult } from "../api";
 import { BookmarkButton } from "../bookmark";
 import { useDialogOpen } from "../dialog";
 import { ClozeAnswerList, ClozeFieldList, ClozeStatement } from "../cloze";
+import { OrderAnswerList, OrderBlocks } from "../order";
 import { RichText } from "../rich";
 import { shuffle } from "../resume";
 import { Crumbs, EmptyState, Skeletons } from "../ui";
@@ -34,6 +35,9 @@ export const Review = () => {
   const [clozeInputs, setClozeInputs] = useState<Record<number, string[]>>({});
   const [clozeResults, setClozeResults] = useState<Record<number, ReviewAnswerResult>>({});
   const [clozeBusy, setClozeBusy] = useState(false);
+  const [orderInputs, setOrderInputs] = useState<Record<number, string[]>>({});
+  const [orderResults, setOrderResults] = useState<Record<number, ReviewAnswerResult>>({});
+  const [orderBusy, setOrderBusy] = useState(false);
   // 解説を折りたたんだ問題 (questionVersionId)。別の問題に進めば開いた状態に戻る
   const [collapsedFor, setCollapsedFor] = useState<number | null>(null);
   // 1周回を束ねるID (集計用予約。サーバ側はNULL可だが常に送る)
@@ -72,6 +76,8 @@ export const Review = () => {
     setPicks({});
     setClozeInputs({});
     setClozeResults({});
+    setOrderInputs({});
+    setOrderResults({});
     setServerInfo({});
     setCollapsedFor(null);
     window.scrollTo(0, 0);
@@ -79,9 +85,11 @@ export const Review = () => {
 
   const target = order[pos];
   const targetCloze = !!target && isCloze(target.questionType);
+  const targetOrder = !!target && isOrder(target.questionType);
   const picked = target ? picks[target.questionVersionId] : undefined;
   const clozeResult = target ? clozeResults[target.questionVersionId] : undefined;
-  const revealed = picked !== undefined || clozeResult !== undefined;
+  const orderResult = target ? orderResults[target.questionVersionId] : undefined;
+  const revealed = picked !== undefined || clozeResult !== undefined || orderResult !== undefined;
   const expCollapsed = !!target && collapsedFor === target.questionVersionId;
 
   const { doneCount, correctCount } = useMemo(() => {
@@ -95,8 +103,15 @@ export const Review = () => {
     for (const [, r] of clozeEntries) {
       if (r.correct) ok++;
     }
-    return { doneCount: entries.length + clozeEntries.length, correctCount: ok };
-  }, [picks, clozeResults, order]);
+    const orderEntries = Object.entries(orderResults);
+    for (const [, r] of orderEntries) {
+      if (r.correct) ok++;
+    }
+    return {
+      doneCount: entries.length + clozeEntries.length + orderEntries.length,
+      correctCount: ok,
+    };
+  }, [picks, clozeResults, orderResults, order]);
 
   const remaining = order.length - doneCount;
   const finished = order.length > 0 && revealed && doneCount >= order.length;
@@ -141,6 +156,27 @@ export const Review = () => {
       });
   }, [target, revealed, clozeBusy, clozeInputs, sessionId]);
 
+  const submitOrder = useCallback(() => {
+    if (!target || revealed || orderBusy) return;
+    const values = orderInputs[target.questionVersionId] ?? target.items;
+    if (values.length !== target.correctOrder.length) return;
+    setOrderBusy(true);
+    api<ReviewAnswerResult>("/api/review/answers", {
+      method: "POST",
+      body: { questionVersionId: target.questionVersionId, order: values, sessionId },
+    })
+      .then((r) => {
+        setOrderResults((s) => ({ ...s, [target.questionVersionId]: r }));
+        setServerInfo((s) => ({ ...s, [target.questionVersionId]: r }));
+      })
+      .catch(() => {
+        /* 記録失敗は無視する */
+      })
+      .finally(() => {
+        setOrderBusy(false);
+      });
+  }, [target, revealed, orderBusy, orderInputs, sessionId]);
+
   const next = useCallback(() => {
     if (!revealed) return;
     if (pos + 1 < order.length) {
@@ -159,7 +195,7 @@ export const Review = () => {
     if (dialogOpen) return;
     if (state.name !== "ready" || !target) return;
     if (e.key >= "1" && e.key <= "4" && !revealed) {
-      if (!isCloze(target.questionType)) {
+      if (!isCloze(target.questionType) && !isOrder(target.questionType)) {
         const idx = Number(e.key) - 1;
         if (target.choices[idx] !== undefined) {
           e.preventDefault();
@@ -276,7 +312,13 @@ export const Review = () => {
     );
   }
 
-  const isOk = revealed && (targetCloze ? !!clozeResult?.correct : picked === target.answer);
+  const isOk =
+    revealed &&
+    (targetCloze
+      ? !!clozeResult?.correct
+      : targetOrder
+        ? !!orderResult?.correct
+        : picked === target.answer);
   const clozeValues = targetCloze
     ? (clozeInputs[target.questionVersionId] ?? Array(target.correctAnswers.length).fill(""))
     : [];
@@ -290,6 +332,7 @@ export const Review = () => {
             {order.map((o, i) => {
               const p = picks[o.questionVersionId];
               const cr = clozeResults[o.questionVersionId];
+              const or = orderResults[o.questionVersionId];
               const cls =
                 p !== undefined
                   ? p === o.answer
@@ -299,9 +342,13 @@ export const Review = () => {
                     ? cr.correct
                       ? " is-ok"
                       : " is-ng"
-                    : i === pos
-                      ? " is-now"
-                      : "";
+                    : or !== undefined
+                      ? or.correct
+                        ? " is-ok"
+                        : " is-ng"
+                      : i === pos
+                        ? " is-now"
+                        : "";
               return <i key={o.questionVersionId} className={"play-dot" + cls} />;
             })}
           </div>
@@ -342,6 +389,7 @@ export const Review = () => {
                   if (!revealed) submitCloze();
                 }}
               >
+                {" "}
                 <div className="q-statement rich cloze-statement">
                   <ClozeStatement
                     statement={target.statement}
@@ -398,6 +446,40 @@ export const Review = () => {
                   <span className="kbd">Enter</span> で次へ
                 </p>
               </form>
+            ) : targetOrder ? (
+              <form
+                className="order-form"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  if (!revealed) submitOrder();
+                }}
+              >
+                <p className="q-statement rich">
+                  <RichText text={target.statement} />
+                </p>
+                <OrderBlocks
+                  key={target.questionVersionId}
+                  initial={orderInputs[target.questionVersionId] ?? target.items}
+                  status={
+                    revealed
+                      ? (orderResult?.orderDetails ?? []).map((d) => (d.correct ? true : false))
+                      : undefined
+                  }
+                  disabled={orderBusy}
+                  onChange={(nextOrder) =>
+                    setOrderInputs((prev) => ({ ...prev, [target.questionVersionId]: nextOrder }))
+                  }
+                />
+                {!revealed && (
+                  <button type="submit" className="btn btn-primary btn-block" disabled={orderBusy}>
+                    回答する
+                  </button>
+                )}
+                <p className="muted" style={{ textAlign: "center" }}>
+                  全{target.correctOrder.length}個を正しい順序に並べて回答 ·{" "}
+                  <span className="kbd">Enter</span> で次へ
+                </p>
+              </form>
             ) : (
               <>
                 <p className="q-statement rich">
@@ -450,7 +532,9 @@ export const Review = () => {
                     ? "正解！よく直せたね"
                     : targetCloze
                       ? "不正解…"
-                      : `不正解… 正解は ${target.answer} 番`}
+                      : targetOrder
+                        ? "不正解… 正しい順序を確認しよう"
+                        : `不正解… 正解は ${target.answer} 番`}
                 </span>
                 <span className="sheet-score">
                   現在 {correctCount} / {doneCount} 正解
@@ -475,6 +559,9 @@ export const Review = () => {
               </div>
               {!isOk && targetCloze && (
                 <ClozeAnswerList answers={(clozeResult?.details ?? []).map((d) => d.answer)} />
+              )}
+              {!isOk && targetOrder && (
+                <OrderAnswerList answers={orderResult?.correctOrder ?? target.correctOrder} />
               )}
               {!expCollapsed && (
                 <div className="sheet-exp rich">
