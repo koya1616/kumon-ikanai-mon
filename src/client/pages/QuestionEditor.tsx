@@ -260,7 +260,8 @@ export const QuestionEditor = ({ quiz, onSaved }: { quiz: Quiz; onSaved: () => v
         <label className="field">
           <span className="label">問題文</span>
           <textarea
-            className="textarea code-input"
+            className="textarea code-input textarea-lg"
+            rows={8}
             placeholder={
               isCloze(d.kind)
                 ? "空欄は {{1}} {{2}} のように書く（{{1}}から連番・長文OK）"
@@ -288,7 +289,7 @@ export const QuestionEditor = ({ quiz, onSaved }: { quiz: Quiz; onSaved: () => v
             )}
           </span>
           <span className="label">プレビュー</span>
-          <div className="admin-preview rich">
+          <div className="admin-preview admin-preview-cloze rich">
             {isCloze(d.kind) ? (
               <ClozeStatement statement={d.statement || "（プレビュー）"} values={d.answers} />
             ) : (
@@ -301,7 +302,7 @@ export const QuestionEditor = ({ quiz, onSaved }: { quiz: Quiz; onSaved: () => v
             <span className="label">正答（空欄の順番どおり・すべて必須）</span>
             <div className="qform-choices">
               {d.answers.map((a, i) => (
-                <div key={i} className="qform-choice">
+                <div key={i} className="qform-choice is-cloze">
                   <span className="ans is-static" aria-hidden="true">
                     {i + 1}
                   </span>
@@ -340,8 +341,23 @@ export const QuestionEditor = ({ quiz, onSaved }: { quiz: Quiz; onSaved: () => v
               {(() => {
                 const m = markersOf(d.statement);
                 return m.length !== d.answers.length ? (
-                  <span className="warn">
-                    マーカー{m.length}個・正答{d.answers.length}個：個数を合わせてください
+                  <span className="row wrap">
+                    <span className="warn">
+                      マーカー{m.length}個・正答{d.answers.length}個：個数を合わせてください
+                    </span>
+                    {m.length > 0 && (
+                      <button
+                        type="button"
+                        className="btn btn-sm"
+                        onClick={() =>
+                          patch(cur, {
+                            answers: m.map((_, k) => d.answers[k] ?? ""),
+                          })
+                        }
+                      >
+                        正答欄をマーカー数に合わせる
+                      </button>
+                    )}
                   </span>
                 ) : null;
               })()}

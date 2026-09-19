@@ -6,7 +6,7 @@ import { Link, useNavigate, useSearchParams } from "react-router";
 import { api, isCloze } from "../api";
 import type { MistakeItem, ReviewAnswerResult } from "../api";
 import { BookmarkButton } from "../bookmark";
-import { ClozeStatement, formatClozeAnswers } from "../cloze";
+import { ClozeAnswerList, ClozeFieldList, ClozeStatement } from "../cloze";
 import { RichText } from "../rich";
 import { shuffle } from "../resume";
 import { Crumbs, EmptyState, Skeletons } from "../ui";
@@ -362,6 +362,20 @@ export const Review = () => {
                     }
                   />
                 </div>
+                {!revealed &&
+                  (target.correctAnswers.length >= 2 || target.statement.length > 100) && (
+                    <ClozeFieldList
+                      values={clozeValues}
+                      disabled={clozeBusy}
+                      onChange={(n, v) =>
+                        setClozeInputs((prev) => {
+                          const cur = [...(prev[target.questionVersionId] ?? clozeValues)];
+                          cur[n - 1] = v;
+                          return { ...prev, [target.questionVersionId]: cur };
+                        })
+                      }
+                    />
+                  )}
                 {!revealed && (
                   <button
                     type="submit"
@@ -431,7 +445,7 @@ export const Review = () => {
                   {isOk
                     ? "正解！よく直せたね"
                     : targetCloze
-                      ? `不正解… 正解は ${formatClozeAnswers((clozeResult?.details ?? []).map((d) => d.answer))}`
+                      ? "不正解…"
                       : `不正解… 正解は ${target.answer} 番`}
                 </span>
                 <span className="sheet-score">
@@ -453,6 +467,9 @@ export const Review = () => {
                   {expCollapsed ? "解説を見る" : "隠す"}
                 </button>
               </div>
+              {!isOk && targetCloze && (
+                <ClozeAnswerList answers={(clozeResult?.details ?? []).map((d) => d.answer)} />
+              )}
               {!expCollapsed && (
                 <div className="sheet-exp rich">
                   <RichText text={target.explanation || "（解説はありません）"} />

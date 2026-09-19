@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router";
 import { api, isCloze } from "../api";
 import type { AnswerResult, AttemptState, PlayQuestion, QuizMeta } from "../api";
-import { ClozeStatement, formatClozeAnswers, parseClozeBlanks } from "../cloze";
+import { ClozeAnswerList, ClozeFieldList, ClozeStatement, parseClozeBlanks } from "../cloze";
 import { useDialog } from "../dialog";
 import {
   applyChoiceOrder,
@@ -518,6 +518,20 @@ const PlayingScreen = ({ play, onChange }: { play: LivePlay; onChange: (p: LiveP
                   }
                 />
               </div>
+              {!revealed && (blankCount >= 2 || q.statement.length > 100) && (
+                <ClozeFieldList
+                  values={inputs}
+                  disabled={play.busy}
+                  onChange={(n, v) =>
+                    setInputs((prev) => {
+                      const nextInputs = [...prev];
+                      while (nextInputs.length < blankCount) nextInputs.push("");
+                      nextInputs[n - 1] = v;
+                      return nextInputs;
+                    })
+                  }
+                />
+              )}
               {!revealed && (
                 <button
                   type="submit"
@@ -588,7 +602,7 @@ const PlayingScreen = ({ play, onChange }: { play: LivePlay; onChange: (p: LiveP
                   {result.ok
                     ? "正解！"
                     : isCloze(result.q.questionType)
-                      ? `不正解… 正解は ${formatClozeAnswers(result.details.map((d) => d.answer))}`
+                      ? "不正解…"
                       : `不正解… 正解は ${result.correct} 番`}
                 </span>
                 <span className="sheet-score">
@@ -603,6 +617,9 @@ const PlayingScreen = ({ play, onChange }: { play: LivePlay; onChange: (p: LiveP
                   {expCollapsed ? "解説を見る" : "隠す"}
                 </button>
               </div>
+              {!result.ok && isCloze(result.q.questionType) && (
+                <ClozeAnswerList answers={result.details.map((d) => d.answer)} />
+              )}
               {!expCollapsed && (
                 <div className="sheet-exp rich">
                   <RichText text={result.exp || "（解説はありません）"} />

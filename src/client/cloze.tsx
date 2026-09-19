@@ -18,9 +18,27 @@ export const formatClozeAnswers = (answers: string[]): string =>
 
 type BlankStatus = "ok" | "ng";
 
+/** 全角文字を2として数える (ch単位のwidth指定が和文で狭くなりすぎる対策) */
+const textWidth = (s: string): number => {
+  let w = 0;
+  for (const ch of s) {
+    w += ch.codePointAt(0)! > 0xff ? 2 : 1;
+  }
+  return w;
+};
+
 const widthOf = (value: string, answer?: string): number => {
-  const len = Math.max(value.length, (answer ?? "").length, 4);
-  return Math.min(Math.max(len + 1, 5), 24);
+  const len = Math.max(textWidth(value), textWidth(answer ?? ""), 8);
+  return Math.min(Math.max(len + 2, 10), 30);
+};
+
+/** 文中Enterで次の空欄へフォーカス移動 (最後はフォームsubmitに任せる) */
+const focusBlank = (form: HTMLFormElement | null, n: number, count: number) => {
+  if (!form) return false;
+  const next = form.querySelector<HTMLInputElement>(`input[data-cloze-blank="${n + 1}"]`);
+  if (n >= count || !next) return false;
+  next.focus();
+  return true;
 };
 
 export const ClozeStatement = ({
@@ -58,32 +76,127 @@ export const ClozeStatement = ({
         const cls =
           "cloze-blank" +
           (st === "ok" ? " is-ok" : st === "ng" ? " is-ng" : "") +
-          (editable ? "" : " is-readonly");
+          (editable ? "" : " is-readonly") +
+          (!editable && !value ? " is-empty" : "");
         if (editable) {
           return (
-            <input
-              key={n}
-              type="text"
-              className={cls}
-              aria-label={`${ariaPrefix}${n}`}
-              value={value}
-              disabled={disabled}
-              autoFocus={autoFocusFirst && n === 1}
-              maxLength={100}
-              style={{ width: `${widthOf(value, answer)}ch` }}
-              onChange={(e) => onChange?.(n, e.target.value)}
-            />
+            <span key={n} className="cloze-field">
+              <span className="cloze-num" aria-hidden="true">
+                {n}
+              </span>
+              <input
+                type="text"
+                className={cls}
+                data-cloze-blank={n}
+                aria-label={`${ariaPrefix}${n}`}
+                placeholder={`空欄${n}`}
+                value={value}
+                disabled={disabled}
+                autoFocus={autoFocusFirst && n === 1}
+                maxLength={100}
+                autoComplete="off"
+                style={{ width: `${widthOf(value, answer)}ch` }}
+                onChange={(e) => onChange?.(n, e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key !== "Enter") return;
+                  // すべて埋まっている場合はsubmit (回答/次へ)。未入力があれば次欄へ。
+                  const form = (e.target as HTMLInputElement).closest("form");
+                  if (focusBlank(form, n, values.length)) e.preventDefault();
+                }}
+              />
+            </span>
           );
         }
         return (
-          <span key={n}>
-            <span className={cls}>{value || "（空欄）"}</span>
+          <span key={n} className="cloze-result">
+            <span className={cls}>{value || `空欄${n}`} </span>
             {st === "ng" && answer !== undefined && (
-              <span className="cloze-answer">正: {answer}</span>
+              <span className="cloze-answer">
+                <span className="cloze-answer-label" aria-hidden="true">
+                  正解
+                </span>
+                {answer}
+              </span>
             )}
           </span>
         );
       }}
     />
+  );
+};
+
+/** 正答リスト表示 (回答後の「正解は…」を見やすく番号バッジ付きで並べる) */
+export const ClozeAnswerList = ({ answers }: { answers: string[] }) => {
+  if (!answers.length) return null;
+  return (
+    <ol className="cloze-answers" aria-label="正解一覧">
+      {answers.map((a, i) => (
+        <li key={i} className="cloze-answers-row">
+          <span className="cloze-num" aria-hidden="true">
+            {i + 1}
+          </span>
+          <span className="cloze-answers-text">{a}</span>
+        </li>
+      ))}
+    </ol>
+  );
+};
+
+/**
+ * 長文でも入力しやすい空欄一覧 (問題文の下に番号順の入力欄を並べる)。
+ * 文中のinputと同一の values/onChange を共有するため両者は同期する。
+ */
+export const ClozeFieldList = ({
+  values,
+  status,
+  disabled,
+  onChange,
+  ariaPrefix = "空欄",
+}: {
+  values: string[];
+  status?: (BlankStatus | null)[] | undefined;
+  disabled?: boolean | undefined;
+  onChange?: ((blankIndex: number, value: string) => void) | undefined;
+  ariaPrefix?: string | undefined;
+}) => {
+  if (!values.length) return null;
+  return (
+    <ol className="cloze-list" aria-label="空欄への回答欄">
+      {values.map((value, i) => {
+        const n = i + 1;
+        const st = status?.[i] ?? null;
+        return (
+          <li key={n} className="cloze-list-row">
+            <label className="cloze-list-label" htmlFor={`cloze-list-${n}`}>
+              <span className="cloze-num" aria-hidden="true">
+                {n}
+              </span>
+              <span className="vh">{`${ariaPrefix}${n}`}</span>
+            </label>
+            <input
+              id={`cloze-list-${n}`}
+              type="text"
+              data-cloze-blank={n}
+              className={
+                "cloze-blank cloze-list-input" +
+                (st === "ok" ? " is-ok" : st === "ng" ? " is-ng" : "")
+              }
+              placeholder={`空欄${n}の回答を入力`}
+              aria-label={`${ariaPrefix}${n}の回答`}
+              value={value}
+              disabled={disabled}
+              maxLength={100}
+              autoComplete="off"
+              onChange={(e) => onChange?.(n, e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key !== "Enter") return;
+                const form = (e.target as HTMLInputElement).closest("form");
+                if (focusBlank(form, n, values.length)) e.preventDefault();
+              }}
+            />
+          </li>
+        );
+      })}
+    </ol>
   );
 };

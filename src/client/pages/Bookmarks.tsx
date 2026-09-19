@@ -5,7 +5,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router";
 import { api, isCloze } from "../api";
 import type { BookmarkItem } from "../api";
-import { ClozeStatement, formatClozeAnswers } from "../cloze";
+import { ClozeAnswerList, ClozeStatement } from "../cloze";
 import { RichText } from "../rich";
 import { EmptyState, Icon, Skeletons } from "../ui";
 
@@ -250,11 +250,14 @@ const BookmarkCard = ({
       )}
       {revealed && (
         <>
-          <p className="bm-answer tnum">
-            {isCloze(it.questionType)
-              ? `正解は ${formatClozeAnswers(it.correctAnswers)}`
-              : `正解は ${it.answer} 番`}
-          </p>
+          {isCloze(it.questionType) ? (
+            <div className="bm-answer">
+              <span>正解:</span>
+              <ClozeAnswerList answers={it.correctAnswers} />
+            </div>
+          ) : (
+            <p className="bm-answer tnum">正解は {it.answer} 番</p>
+          )}
           {it.explanation && (
             <div className="exp rich">
               <RichText text={it.explanation} />

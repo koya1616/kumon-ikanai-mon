@@ -15,7 +15,7 @@ import type {
   QuizMeta,
 } from "../api";
 import { BookmarkButton } from "../bookmark";
-import { ClozeStatement, formatClozeAnswers } from "../cloze";
+import { ClozeAnswerList, ClozeStatement } from "../cloze";
 import { RichText } from "../rich";
 import { Crumbs, EmptyState, Skeletons, Stars } from "../ui";
 
@@ -470,7 +470,10 @@ const QuestionRow = ({
       {open && (
         <div className="hx-q-body">
           {isCloze(q.questionType) ? (
-            <p className="hx-cloze-answer">正解: {formatClozeAnswers(q.correctAnswers)}</p>
+            <div className="hx-cloze-answer">
+              <span>正解:</span>
+              <ClozeAnswerList answers={q.correctAnswers} />
+            </div>
           ) : (
             <ol className="hx-choices">
               {q.choices.map((c, i) => (
@@ -676,7 +679,13 @@ const AttemptPanel = ({
                   <span className="grow">
                     <span className="hx-qno">第{it.position}問</span>
                     <span className="review-statement rich">
-                      <RichText text={it.statement} />
+                      <RichText
+                        text={
+                          isCloze(it.questionType)
+                            ? it.statement.replace(/\{\{(\d+)\}\}/g, "［空欄$1］")
+                            : it.statement
+                        }
+                      />
                     </span>
                   </span>
                   <BookmarkButton questionId={it.questionId} />
@@ -703,7 +712,8 @@ const AttemptPanel = ({
                       )}
                       {(!it.correct || !it.pickedAnswers.length) && (
                         <div className="review-correct">
-                          正解: {formatClozeAnswers(it.correctAnswers)}
+                          <span>正解:</span>
+                          <ClozeAnswerList answers={it.correctAnswers} />
                         </div>
                       )}
                     </>

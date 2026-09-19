@@ -3,7 +3,7 @@ import { Link, useNavigate } from "react-router";
 import { api, isCloze } from "../api";
 import type { AttemptRecord } from "../api";
 import { clearResume } from "../resume";
-import { ClozeStatement, formatClozeAnswers } from "../cloze";
+import { ClozeAnswerList, ClozeFieldList, ClozeStatement } from "../cloze";
 import { RichText } from "../rich";
 import { getSession } from "../session";
 import type { SessionAnswer } from "../session";
@@ -311,7 +311,13 @@ const ReviewCard = ({
         <span className="grow">
           <span>第{i + 1}問　</span>
           <span className="review-statement rich">
-            <RichText text={a.q.statement} />
+            <RichText
+              text={
+                isCloze(a.q.questionType)
+                  ? a.q.statement.replace(/\{\{(\d+)\}\}/g, "［空欄$1］")
+                  : a.q.statement
+              }
+            />
           </span>
           <span className={`review-judge ${a.ok ? "is-ok" : "is-ng"}`}>
             {a.ok ? "できた" : "見直し"}
@@ -332,7 +338,8 @@ const ReviewCard = ({
             </div>
             {!a.ok && (
               <div className="review-correct">
-                正解: {formatClozeAnswers(a.details.map((d) => d.answer))}
+                <span>正解:</span>
+                <ClozeAnswerList answers={a.details.map((d) => d.answer)} />
               </div>
             )}
           </>
@@ -467,6 +474,18 @@ const DrillCard = ({
               }
             />
           </div>
+          {!drillRevealed && (drillInputs.length >= 2 || target.q.statement.length > 100) && (
+            <ClozeFieldList
+              values={drillInputs}
+              onChange={(n, v) =>
+                setDrillInputs((prev) => {
+                  const nextInputs = [...prev];
+                  nextInputs[n - 1] = v;
+                  return nextInputs;
+                })
+              }
+            />
+          )}
           {!drillRevealed && (
             <button
               type="submit"
@@ -514,14 +533,13 @@ const DrillCard = ({
       {(targetCloze ? drillRevealed : revealed) && (
         <div className="drill-feedback">
           <p className={drillCorrect ? "is-good" : "is-bad"}>
-            {drillCorrect
-              ? "正解！よく直せたね"
-              : targetCloze
-                ? `正解は ${formatClozeAnswers(target.details.map((d) => d.answer))}`
-                : `正解は ${target.correct} 番`}
+            {drillCorrect ? "正解！よく直せたね" : targetCloze ? "正解は…" : `正解は ${target.correct} 番`}
             {" · "}
             現在 {correctCount} / {drill.doneCount} 正解
           </p>
+          {!drillCorrect && targetCloze && (
+            <ClozeAnswerList answers={target.details.map((d) => d.answer)} />
+          )}
           {target.exp && (
             <div className="exp rich">
               <RichText text={target.exp} />

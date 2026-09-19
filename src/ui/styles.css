@@ -2022,6 +2022,15 @@
     color: var(--moegi);
     font-weight: 700;
   }
+  .hx-cloze-answer {
+    color: var(--moegi);
+    font-weight: 700;
+    display: grid;
+    gap: 6px;
+  }
+  .hx-cloze-answer .cloze-answers {
+    margin: 0;
+  }
   .review-body {
     padding: 0 14px 14px 52px;
     display: flex;
@@ -2592,6 +2601,13 @@
     gap: 8px;
     align-items: center;
   }
+  /* 穴埋め正答行は「番号 + 入力 + 削除」の3要素 */
+  .qform-choice.is-cloze {
+    grid-template-columns: 44px 1fr auto;
+  }
+  .qform-choice.is-cloze .btn {
+    flex: none;
+  }
   .qform-choice .ans {
     width: 44px;
     height: 44px;
@@ -2800,6 +2816,13 @@
   line-height: 1.7;
   min-height: 52px;
 }
+/* 穴埋めプレビューは長文になりがち: 高さを確保しつつスクロールで収める */
+.admin-preview-cloze {
+  font-size: 16px;
+  line-height: 2.2;
+  max-height: 420px;
+  overflow: auto;
+}
 .admin-preview:empty::before {
   content: "（プレビュー）";
   color: var(--ink-3);
@@ -2814,6 +2837,11 @@
 .code-input {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 14px;
+}
+/* 問題文は長文になりがち: 既定を高めにして見渡せるようにする */
+.textarea-lg {
+  min-height: 180px;
+  line-height: 1.7;
 }
 
 /* ===== 履歴詳細ページ (/h/:id) : 概況 → 問題別 / 回ごと ===== */
@@ -3540,21 +3568,72 @@
 
 /* ===== 穴埋め (cloze_text) ===== */
 .cloze-statement {
-  line-height: 2.4;
+  line-height: 2.5;
+  font-size: 16px;
+}
+/* 文中の入力欄: 番号バッジ + 本体のセットで1つの空欄に見せる */
+.cloze-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 0;
+  vertical-align: baseline;
+  margin: 0 2px;
+}
+.cloze-num {
+  flex: none;
+  position: relative;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  line-height: 1;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--ink, #333);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 800;
+  transform: translateX(11px);
+}
+.cloze-field .cloze-blank {
+  padding-left: 16px;
+}
+.cloze-list-label .cloze-num,
+.cloze-answers-row .cloze-num {
+  transform: none;
 }
 .cloze-blank {
   display: inline-block;
   vertical-align: baseline;
   font: inherit;
+  font-size: 16px;
   color: inherit;
   background: var(--card, #fff);
-  border: 1px solid var(--line, #d8d2c7);
-  border-radius: 8px;
-  padding: 2px 8px;
+  border: 2px solid var(--line, #d8d2c7);
+  border-radius: 10px;
+  padding: 6px 10px;
   margin: 0 2px;
+  min-width: 10ch;
+  max-width: min(100%, 30ch);
+}
+.cloze-blank::placeholder {
+  color: var(--ink-3);
+  opacity: 0.7;
+  font-size: 13px;
+}
+input.cloze-blank:hover {
+  border-color: var(--ink-3);
+}
+input.cloze-blank:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--shu) 35%, transparent);
+  outline-offset: 1px;
+  border-color: var(--shu);
 }
 input.cloze-blank:focus {
-  outline: 2px solid var(--shu);
+  outline: 3px solid color-mix(in srgb, var(--shu) 35%, transparent);
   outline-offset: 1px;
   border-color: var(--shu);
 }
@@ -3568,12 +3647,102 @@ input.cloze-blank:focus {
 }
 .cloze-blank.is-readonly {
   border-style: dashed;
+  padding: 2px 10px;
+}
+.cloze-blank.is-empty {
+  color: var(--ink-3);
+  font-size: 14px;
+}
+/* 回答後の結果表示: 空欄と正解チップを1セットで折り返す */
+.cloze-result {
+  display: inline-flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 4px 6px;
+  margin: 0 2px;
+  vertical-align: baseline;
+}
+.cloze-result .cloze-blank {
+  margin: 0;
 }
 .cloze-answer {
-  font-size: 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.5;
   color: var(--moegi);
-  margin-left: 4px;
-  white-space: nowrap;
+  background: var(--moegi-soft);
+  border: 1.5px solid var(--moegi);
+  border-radius: 999px;
+  padding: 3px 12px 3px 6px;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  vertical-align: baseline;
+}
+.cloze-answer-label {
+  flex: none;
+  font-size: 11px;
+  font-weight: 800;
+  background: var(--moegi);
+  color: #fff;
+  border-radius: 999px;
+  padding: 1px 8px;
+}
+/* 長文用: 問題文の下に並べる空欄一覧 (文中と同期) */
+.cloze-list {
+  list-style: none;
+  margin: 4px 0 0;
+  padding: 12px;
+  display: grid;
+  gap: 8px;
+  border: 1.5px dashed var(--rule);
+  border-radius: var(--r-md);
+  background: var(--paper-2);
+}
+.cloze-list-row {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 10px;
+  align-items: center;
+}
+.cloze-list-label {
+  display: inline-flex;
+  align-items: center;
+}
+.cloze-list-input {
+  width: 100%;
+  min-height: 44px;
+  margin: 0;
+  max-width: none;
+}
+/* 正解一覧 (回答後の開示用) */
+.cloze-answers {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+.cloze-answers-row {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 8px 12px;
+  border-radius: var(--r-md);
+  background: var(--moegi-soft);
+  border: 1.5px solid var(--moegi);
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+.cloze-answers-text {
+  min-width: 0;
+  flex: 1;
 }
 .cloze-form {
   display: grid;
