@@ -41,9 +41,7 @@ const isClozeComplete = (d: Draft): boolean => {
 };
 
 const isComplete = (d: Draft): boolean =>
-  isCloze(d.kind)
-    ? isClozeComplete(d)
-    : !!d.statement.trim() && d.choices.every((c) => c.trim());
+  isCloze(d.kind) ? isClozeComplete(d) : !!d.statement.trim() && d.choices.every((c) => c.trim());
 
 const isBlank = (d: Draft): boolean =>
   !d.statement.trim() &&
@@ -81,9 +79,7 @@ export const QuestionEditor = ({ quiz, onSaved }: { quiz: Quiz; onSaved: () => v
                     choices: ["", "", "", ""] as [string, string, string, string],
                     answer: 1,
                     answers:
-                      q.blanks && q.blanks.length
-                        ? q.blanks.map((b) => b.answer ?? "")
-                        : [""],
+                      q.blanks && q.blanks.length ? q.blanks.map((b) => b.answer ?? "") : [""],
                     explanation: q.explanation ?? "",
                   }
                 : {
@@ -123,14 +119,12 @@ export const QuestionEditor = ({ quiz, onSaved }: { quiz: Quiz; onSaved: () => v
 
   // 未保存警告
   useEffect(() => {
-    if (!dirty) {
-      window.onbeforeunload = null;
-      return;
-    }
-    window.onbeforeunload = () => "未保存の変更があります";
-    return () => {
-      window.onbeforeunload = null;
+    if (!dirty) return;
+    const onBeforeUnload = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
     };
+    window.addEventListener("beforeunload", onBeforeUnload);
+    return () => window.removeEventListener("beforeunload", onBeforeUnload);
   }, [dirty]);
 
   if (loadError) {
@@ -192,7 +186,7 @@ export const QuestionEditor = ({ quiz, onSaved }: { quiz: Quiz; onSaved: () => v
         .then(() => {
           toast(`${payload.length}問を保存しました`, "ok");
           invalidate();
-          window.onbeforeunload = null;
+          setPristine(JSON.stringify(drafts));
           onSaved();
         })
         .catch((e: Error) => {
@@ -234,10 +228,26 @@ export const QuestionEditor = ({ quiz, onSaved }: { quiz: Quiz; onSaved: () => v
       </div>
 
       <div className="card card-pad qform">
-        <div className="row">
+        <div className="row wrap">
           <span className="q-num">第 {cur + 1} 問</span>
           <span className="muted">{d.id ? `登録済み (ID ${d.id})` : "未登録"}</span>
           <span className="grow" />
+          <button
+            type="button"
+            className="btn btn-sm btn-ghost"
+            disabled={isBlank(d)}
+            onClick={() =>
+              patch(cur, {
+                statement: "",
+                choices: ["", "", "", ""],
+                answer: 1,
+                answers: [""],
+                explanation: "",
+              })
+            }
+          >
+            この枠をクリア
+          </button>
           <div className="seg" role="group" aria-label="問題形式">
             <button
               type="button"
@@ -277,7 +287,9 @@ export const QuestionEditor = ({ quiz, onSaved }: { quiz: Quiz; onSaved: () => v
                 空欄マーカー
                 {(() => {
                   const m = markersOf(d.statement);
-                  return m.length ? `（検出: ${m.map((n) => `{{${n}}}`).join(" ")}）` : "（未検出）";
+                  return m.length
+                    ? `（検出: ${m.map((n) => `{{${n}}}`).join(" ")}）`
+                    : "（未検出）";
                 })()}{" "}
                 · 改行はそのまま表示・`code` で装飾できます
               </>
@@ -329,7 +341,7 @@ export const QuestionEditor = ({ quiz, onSaved }: { quiz: Quiz; onSaved: () => v
                 </div>
               ))}
             </div>
-            <div className="row mt">
+            <div className="actions">
               <button
                 type="button"
                 className="btn btn-sm"
@@ -338,30 +350,30 @@ export const QuestionEditor = ({ quiz, onSaved }: { quiz: Quiz; onSaved: () => v
               >
                 ＋ 空欄を追加
               </button>
-              {(() => {
-                const m = markersOf(d.statement);
-                return m.length !== d.answers.length ? (
-                  <span className="row wrap">
-                    <span className="warn">
-                      マーカー{m.length}個・正答{d.answers.length}個：個数を合わせてください
-                    </span>
-                    {m.length > 0 && (
-                      <button
-                        type="button"
-                        className="btn btn-sm"
-                        onClick={() =>
-                          patch(cur, {
-                            answers: m.map((_, k) => d.answers[k] ?? ""),
-                          })
-                        }
-                      >
-                        正答欄をマーカー数に合わせる
-                      </button>
-                    )}
-                  </span>
-                ) : null;
-              })()}
             </div>
+            {(() => {
+              const m = markersOf(d.statement);
+              return m.length !== d.answers.length ? (
+                <div className="actions">
+                  <span className="warn">
+                    マーカー{m.length}個・正答{d.answers.length}個：個数を合わせてください
+                  </span>
+                  {m.length > 0 && (
+                    <button
+                      type="button"
+                      className="btn btn-sm"
+                      onClick={() =>
+                        patch(cur, {
+                          answers: m.map((_, k) => d.answers[k] ?? ""),
+                        })
+                      }
+                    >
+                      正答欄をマーカー数に合わせる
+                    </button>
+                  )}
+                </div>
+              ) : null;
+            })()}
           </div>
         ) : (
           <div className="field">
@@ -420,22 +432,9 @@ export const QuestionEditor = ({ quiz, onSaved }: { quiz: Quiz; onSaved: () => v
           >
             ← 前
           </button>
-          <span className="spacer" />
-          <button
-            type="button"
-            className="btn btn-sm btn-ghost"
-            onClick={() =>
-              patch(cur, {
-                statement: "",
-                choices: ["", "", "", ""],
-                answer: 1,
-                answers: [""],
-                explanation: "",
-              })
-            }
-          >
-            この枠をクリア
-          </button>
+          <span className="spacer muted tnum" style={{ textAlign: "center" }}>
+            {cur + 1} / {QUESTIONS_PER_QUIZ}
+          </span>
           <button
             type="button"
             className="btn btn-sm"

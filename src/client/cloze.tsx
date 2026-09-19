@@ -1,6 +1,8 @@
 // 穴埋め描画 (statement中の {{n}} を入力欄・表示欄に置換)。
 // RichText の renderBlank 差し込み口を使い、コードブロック内は置換しない。
 // XSS-safe (テキストノード組み立てのみ)。
+import { useRef } from "react";
+import type { KeyboardEvent } from "react";
 import { RichText, splitClozeParts } from "./rich";
 
 /** statement中のマーカー番号を出現順・重複除去で返す */
@@ -32,13 +34,24 @@ const widthOf = (value: string, answer?: string): number => {
   return Math.min(Math.max(len + 2, 10), 30);
 };
 
-/** 文中Enterで次の空欄へフォーカス移動 (最後はフォームsubmitに任せる) */
-const focusBlank = (form: HTMLFormElement | null, n: number, count: number) => {
-  if (!form) return false;
-  const next = form.querySelector<HTMLInputElement>(`input[data-cloze-blank="${n + 1}"]`);
-  if (n >= count || !next) return false;
-  next.focus();
-  return true;
+/**
+ * 空欄 input を番号で保持し、Enter で次の空欄へフォーカス移動する。
+ * 移動先が無ければ false を返し、フォームの submit (回答/次へ) に任せる。
+ */
+const useBlankFocus = (count: number) => {
+  const inputs = useRef(new Map<number, HTMLInputElement>());
+  const register = (n: number) => (el: HTMLInputElement | null) => {
+    if (el) inputs.current.set(n, el);
+    else inputs.current.delete(n);
+  };
+  const onEnter = (n: number) => (e: KeyboardEvent<HTMLInputElement>) => {
+    if (e.key !== "Enter" || n >= count) return;
+    const next = inputs.current.get(n + 1);
+    if (!next) return;
+    e.preventDefault();
+    next.focus();
+  };
+  return { register, onEnter };
 };
 
 export const ClozeStatement = ({
@@ -65,6 +78,7 @@ export const ClozeStatement = ({
   autoFocusFirst?: boolean | undefined;
   ariaPrefix?: string | undefined;
 }) => {
+  const { register, onEnter } = useBlankFocus(values.length);
   return (
     <RichText
       text={statement}
@@ -85,9 +99,9 @@ export const ClozeStatement = ({
                 {n}
               </span>
               <input
+                ref={register(n)}
                 type="text"
                 className={cls}
-                data-cloze-blank={n}
                 aria-label={`${ariaPrefix}${n}`}
                 placeholder={`空欄${n}`}
                 value={value}
@@ -97,12 +111,7 @@ export const ClozeStatement = ({
                 autoComplete="off"
                 style={{ width: `${widthOf(value, answer)}ch` }}
                 onChange={(e) => onChange?.(n, e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key !== "Enter") return;
-                  // すべて埋まっている場合はsubmit (回答/次へ)。未入力があれば次欄へ。
-                  const form = (e.target as HTMLInputElement).closest("form");
-                  if (focusBlank(form, n, values.length)) e.preventDefault();
-                }}
+                onKeyDown={onEnter(n)}
               />
             </span>
           );
@@ -159,6 +168,7 @@ export const ClozeFieldList = ({
   onChange?: ((blankIndex: number, value: string) => void) | undefined;
   ariaPrefix?: string | undefined;
 }) => {
+  const { register, onEnter } = useBlankFocus(values.length);
   if (!values.length) return null;
   return (
     <ol className="cloze-list" aria-label="空欄への回答欄">
@@ -174,9 +184,9 @@ export const ClozeFieldList = ({
               <span className="vh">{`${ariaPrefix}${n}`}</span>
             </label>
             <input
+              ref={register(n)}
               id={`cloze-list-${n}`}
               type="text"
-              data-cloze-blank={n}
               className={
                 "cloze-blank cloze-list-input" +
                 (st === "ok" ? " is-ok" : st === "ng" ? " is-ng" : "")
@@ -188,11 +198,7 @@ export const ClozeFieldList = ({
               maxLength={100}
               autoComplete="off"
               onChange={(e) => onChange?.(n, e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key !== "Enter") return;
-                const form = (e.target as HTMLInputElement).closest("form");
-                if (focusBlank(form, n, values.length)) e.preventDefault();
-              }}
+              onKeyDown={onEnter(n)}
             />
           </li>
         );

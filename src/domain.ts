@@ -303,17 +303,23 @@ export function isClozePayload(raw: unknown): boolean {
 export function normalizeImportQuestion(
   raw: unknown,
   index: number,
-): (
-  | { questionType?: "single_choice"; statement: string; choice1: string; choice2: string; choice3: string; choice4: string; answer: number; explanation: string }
-  | { questionType: "cloze_text"; statement: string; answers: string[]; explanation: string }
-) {
+):
+  | {
+      questionType?: "single_choice";
+      statement: string;
+      choice1: string;
+      choice2: string;
+      choice3: string;
+      choice4: string;
+      answer: number;
+      explanation: string;
+    }
+  | { questionType: "cloze_text"; statement: string; answers: string[]; explanation: string } {
   const n = index + 1;
   if (isClozePayload(raw)) {
     const parsed = clozeQuestionSchema.safeParse(raw);
     if (!parsed.success) {
-      throw new Error(
-        `questions[${n}]: ${parsed.error.issues[0]?.message ?? "入力が不正です"}`,
-      );
+      throw new Error(`questions[${n}]: ${parsed.error.issues[0]?.message ?? "入力が不正です"}`);
     }
     return {
       questionType: "cloze_text",

@@ -1,56 +1,83 @@
 /**
  * フロントエンドのシェル HTML。
- * React SPA のソースは src/client/ 配下にあり、
- * `pnpm build:client` で src/ui/app.client.js (生成物) にバンドルされる。
- * wrangler の Text モジュールで CSS/JS を文字列 import し、ここでは骨組みだけを持つ。
+ *
+ * - React SPA のソースは `src/client/` 配下 (TSX)。
+ * - `pnpm build:client` で `dist/client/app.client.js` (生成物・git管理外) にバンドルされる。
+ * - CSS は `src/ui/styles/` に機能別に分割し、ここで順序どおり結合する。
+ *   (wrangler の Text モジュールで各 CSS / JS を文字列 import)
+ * - シェル / トースト / ダイアログを含む UI はすべて React が描画する。
+ *   ここではマウント先 (`#root`) だけを持つ。
  */
-import styles from "./ui/styles.css";
-import script from "./ui/app.client.js";
+import layers from "./ui/styles/layers.css";
+import reset from "./ui/styles/reset.css";
+import tokens from "./ui/styles/tokens.css";
+import base from "./ui/styles/base.css";
+import layout from "./ui/styles/layout.css";
+import components from "./ui/styles/components.css";
+import screensHome from "./ui/styles/screens-home.css";
+import screensCategory from "./ui/styles/screens-category.css";
+import screensPlay from "./ui/styles/screens-play.css";
+import screensResult from "./ui/styles/screens-result.css";
+import screensAdmin from "./ui/styles/screens-admin.css";
+import utilities from "./ui/styles/utilities.css";
+import rich from "./ui/styles/rich.css";
+// ビルド生成物 (scripts/build-client.ts の出力。リポジトリに含めない)
+import script from "../dist/client/app.client.js";
 
-// テンプレートリテラルに CSS/JS を直接埋めると ${} や ` が衝突するため、文字列連結で組み立てる
-export const html: string =
-  '<!DOCTYPE html>\n<html lang="ja">\n<head>\n' +
-  '<meta charset="UTF-8" />\n' +
-  '<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />\n' +
-  '<meta name="color-scheme" content="light dark" />\n' +
-  '<meta name="theme-color" content="#f7f2e8" media="(prefers-color-scheme: light)" />\n' +
-  '<meta name="theme-color" content="#17140f" media="(prefers-color-scheme: dark)" />\n' +
-  "<title>kumon-ikanai-mon | ドリル帳</title>\n" +
-  "<style>\n" +
-  styles +
-  "\n</style>\n</head>\n<body>\n" +
-  '<a href="#main" class="vh">本文へスキップ</a>\n' +
-  '<div class="app">\n' +
-  '  <header class="nav">\n' +
-  '    <a class="brand" href="#/">\n' +
-  '      <span class="brand-mark" aria-hidden="true">問</span>\n' +
-  '      <span class="brand-text"><span class="brand-name">kumon-ikanai-mon</span><span class="brand-sub">ドリル帳 · 10問4択</span></span>\n' +
-  "    </a>\n" +
-  '    <span class="nav-spacer"></span>\n' +
-  '    <nav class="nav-links" aria-label="メイン">\n' +
-  '      <a id="nav-home" class="nav-link" href="#/">ホーム</a>\n' +
-  '      <a id="nav-admin" class="nav-link" href="#/admin">管理</a>\n' +
-  "    </nav>\n" +
-  "  </header>\n" +
-  '  <div class="shell">\n' +
-  '    <aside class="side" aria-label="サイド">\n' +
-  '      <nav class="side-nav" aria-label="サイド">\n' +
-  '        <a id="side-home" class="side-link" href="#/">ホーム</a>\n' +
-  '        <a id="side-history" class="side-link" href="#/history">履歴</a>\n' +
-  '        <a id="side-review" class="side-link" href="#/review">苦手復習</a>\n' +
-  '        <a id="side-bookmarks" class="side-link" href="#/bookmarks">ブックマーク</a>\n' +
-  '        <a id="side-admin" class="side-link" href="#/admin">管理</a>\n' +
-  "      </nav>\n" +
-  "    </aside>\n" +
-  '    <main id="main" class="main" aria-live="polite"></main>\n' +
-  "  </div>\n" +
-  '  <nav class="tabbar" aria-label="メイン (モバイル)">\n' +
-  '    <a id="tab-home" class="tab-link" href="#/">ホーム</a>\n' +
-  '    <a id="tab-admin" class="tab-link" href="#/admin">管理</a>\n' +
-  "  </nav>\n" +
-  "</div>\n" +
-  '<div id="toasts" class="toasts" aria-live="assertive"></div>\n' +
-  '<dialog id="dialog" class="dialog"><div id="dialog-body" class="dialog-body"></div></dialog>\n' +
-  "<script>\n" +
-  script +
-  "\n</script>\n</body>\n</html>\n";
+interface ShellMeta {
+  lang?: string;
+  title?: string;
+  lightTheme?: string;
+  darkTheme?: string;
+}
+
+const DEFAULT_META: Required<ShellMeta> = {
+  lang: "ja",
+  title: "kumon-ikanai-mon | ドリル帳",
+  lightTheme: "#f7f2e8",
+  darkTheme: "#17140f",
+};
+
+/** 結合 CSS。本文のカスケード順 (layers → rich) をここで保証する。 */
+export const bundleStyles = (parts: string[]): string => parts.join("\n");
+
+const appStyles: string = bundleStyles([
+  layers,
+  reset,
+  tokens,
+  base,
+  layout,
+  components,
+  screensHome,
+  screensCategory,
+  screensPlay,
+  screensResult,
+  screensAdmin,
+  utilities,
+  rich,
+]);
+
+const head = (meta: Required<ShellMeta>): string => `\
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="color-scheme" content="light dark" />
+<meta name="theme-color" content="${meta.lightTheme}" media="(prefers-color-scheme: light)" />
+<meta name="theme-color" content="${meta.darkTheme}" media="(prefers-color-scheme: dark)" />
+<title>${meta.title}</title>
+<style>
+${appStyles}
+</style>`;
+
+const body = (bundle: string): string => `\
+<div id="root"></div>
+<script>
+${bundle}
+</script>`;
+
+export const renderShell = (meta: ShellMeta = {}): string => {
+  const m: Required<ShellMeta> = { ...DEFAULT_META, ...meta };
+  return `<!DOCTYPE html>\n<html lang="${m.lang}">\n<head>\n${head(m)}\n</head>\n<body>\n${body(script)}\n</body>\n</html>\n`;
+};
+
+/** 後方互換: 従来の `html` 文字列 import。 */
+export const html: string = renderShell();

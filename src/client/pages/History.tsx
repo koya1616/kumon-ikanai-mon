@@ -106,7 +106,7 @@ export const History = () => {
           <div className="card card-pad">
             <EmptyState glyph="！" title="履歴を取得できません" sub={state.message} />
           </div>
-          <div className="row mt" style={{ justifyContent: "center" }}>
+          <div className="actions actions-center">
             <button type="button" className="btn" onClick={() => navigate(-1)}>
               戻る
             </button>
@@ -517,7 +517,16 @@ const AttemptPanel = ({
   const [cache, setCache] = useState<Record<number, AttemptDetail>>({});
   const [failed, setFailed] = useState<number | null>(null);
   const [onlyWrong, setOnlyWrong] = useState(true);
+  // 答案セルから該当問題へスクロールする。フィルタ解除の再描画後に実行するため state 経由にする
+  const [scrollTarget, setScrollTarget] = useState<number | null>(null);
+  const itemRefs = useRef(new Map<number, HTMLLIElement>());
   const detail = cache[current.id];
+
+  useEffect(() => {
+    if (scrollTarget === null) return;
+    itemRefs.current.get(scrollTarget)?.scrollIntoView({ behavior: "smooth", block: "center" });
+    setScrollTarget(null);
+  }, [scrollTarget, onlyWrong]);
 
   useEffect(() => {
     if (cache[current.id]) return;
@@ -611,11 +620,7 @@ const AttemptPanel = ({
                     onClick={(e) => {
                       e.preventDefault();
                       if (it.correct === true) setOnlyWrong(false);
-                      requestAnimationFrame(() =>
-                        document
-                          .getElementById(`hx-item-${it.attemptQuestionId}`)
-                          ?.scrollIntoView({ behavior: "smooth", block: "center" }),
-                      );
+                      setScrollTarget(it.attemptQuestionId);
                     }}
                     aria-label={`第${it.position}問 ${label}`}
                   >
@@ -658,6 +663,10 @@ const AttemptPanel = ({
               <li
                 key={it.attemptQuestionId}
                 id={`hx-item-${it.attemptQuestionId}`}
+                ref={(el) => {
+                  if (el) itemRefs.current.set(it.attemptQuestionId, el);
+                  else itemRefs.current.delete(it.attemptQuestionId);
+                }}
                 className={`review-item ${it.correct ? "is-ok" : "is-ng"}`}
               >
                 <div className="hist-qhead">

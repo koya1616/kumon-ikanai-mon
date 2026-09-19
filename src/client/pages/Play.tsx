@@ -1,9 +1,9 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router";
 import { api, isCloze } from "../api";
 import type { AnswerResult, AttemptState, PlayQuestion, QuizMeta } from "../api";
 import { ClozeAnswerList, ClozeFieldList, ClozeStatement, parseClozeBlanks } from "../cloze";
-import { useDialog } from "../dialog";
+import { useDialog, useDialogOpen } from "../dialog";
 import {
   applyChoiceOrder,
   clearResume,
@@ -14,7 +14,7 @@ import {
   writeResume,
 } from "../resume";
 import { RichText } from "../rich";
-import { getSession, setSession } from "../session";
+import { usePlaySession } from "../session";
 import type { PlaySession } from "../session";
 import { BookmarkButton } from "../bookmark";
 import { EmptyState, Icon, Stars } from "../ui";
@@ -211,7 +211,7 @@ export const Play = () => {
             <div className="card mt">
               <EmptyState glyph="！" title="このクイズは開始できません" sub={phase.message} />
             </div>
-            <div className="row" style={{ justifyContent: "center" }}>
+            <div className="actions actions-center">
               <button type="button" className="btn" onClick={() => navigate(-1)}>
                 戻る
               </button>
@@ -270,7 +270,12 @@ const PlayingScreen = ({ play, onChange }: { play: LivePlay; onChange: (p: LiveP
   const navigate = useNavigate();
   const toast = useToast();
   const dialog = useDialog();
-  const [expCollapsed, setExpCollapsed] = useState(false);
+  const dialogOpen = useDialogOpen();
+  const { session, setSession } = usePlaySession();
+  const nextRef = useRef<HTMLButtonElement>(null);
+  // 解説の折りたたみは問題単位。問題が変われば開いた状態に戻る
+  const [collapsedIndex, setCollapsedIndex] = useState<number | null>(null);
+  const expCollapsed = collapsedIndex === play.index;
 
   const q = play.questions[play.index]!;
   const revealed = play.answers.length > play.index;
@@ -279,11 +284,20 @@ const PlayingScreen = ({ play, onChange }: { play: LivePlay; onChange: (p: LiveP
   const answeredCount = play.answers.length;
   const last = play.index + 1 >= play.questions.length;
   const cloze = isCloze(q.questionType);
-  const blankCount = cloze ? (q.blankCount || parseClozeBlanks(q.statement).length) : 0;
-  const [inputs, setInputs] = useState<string[]>(() => Array(blankCount).fill(""));
-  useEffect(() => {
-    setInputs(Array(blankCount).fill(""));
-  }, [q.attemptQuestionId, blankCount]);
+  const blankCount = cloze ? q.blankCount || parseClozeBlanks(q.statement).length : 0;
+  // 穴埋め入力は問題IDに紐づけて持ち、別の問題では空から始める
+  const [draft, setDraft] = useState<{ id: number | undefined; values: string[] }>({
+    id: undefined,
+    values: [],
+  });
+  const emptyInputs = useMemo<string[]>(() => Array(blankCount).fill(""), [blankCount]);
+  const inputs = draft.id === q.attemptQuestionId ? draft.values : emptyInputs;
+  const setInput = (n: number, v: string) => {
+    const values = [...inputs];
+    while (values.length < blankCount) values.push("");
+    values[n - 1] = v;
+    setDraft({ id: q.attemptQuestionId, values });
+  };
   const submittable = !cloze || inputs.every((s) => s.trim());
 
   useEffect(() => {
@@ -304,7 +318,7 @@ const PlayingScreen = ({ play, onChange }: { play: LivePlay; onChange: (p: LiveP
       });
       navigate("/result");
     }
-  }, [play, onChange, navigate]);
+  }, [play, onChange, navigate, setSession]);
 
   const answer = useCallback(
     (displayed: number) => {
@@ -378,10 +392,7 @@ const PlayingScreen = ({ play, onChange }: { play: LivePlay; onChange: (p: LiveP
 
   // 次へボタンを回答後にフォーカス (Enter ですぐ進める)
   useEffect(() => {
-    if (revealed) {
-      setExpCollapsed(false);
-      document.getElementById("play-next")?.focus({ preventScroll: true });
-    }
+    if (revealed) nextRef.current?.focus({ preventScroll: true });
   }, [revealed, play.index]);
 
   const quit = useCallback(() => {
@@ -395,36 +406,42 @@ const PlayingScreen = ({ play, onChange }: { play: LivePlay; onChange: (p: LiveP
     });
   }, [dialog, navigate, play.quiz.categoryId]);
 
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.metaKey || e.ctrlKey || e.altKey) return;
-      const dlg = document.getElementById("dialog") as HTMLDialogElement | null;
-      if (dlg?.open) return;
-      if (e.key >= "1" && e.key <= "4" && !revealed && !play.busy) {
-        const cur = play.questions[play.index];
-        if (cur && !isCloze(cur.questionType)) {
-          const idx = Number(e.key) - 1;
-          if (cur.choices[idx] !== undefined) {
-            e.preventDefault();
-            answer(Number(e.key));
-          }
+  // ショートカット。最新の state を読むため effect event にし、購読は1回だけにする
+  const onKey = useEffectEvent((e: KeyboardEvent) => {
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    if (dialogOpen) return;
+    if (e.key >= "1" && e.key <= "4" && !revealed && !play.busy) {
+      const cur = play.questions[play.index];
+      if (cur && !isCloze(cur.questionType)) {
+        const idx = Number(e.key) - 1;
+        if (cur.choices[idx] !== undefined) {
+          e.preventDefault();
+          answer(Number(e.key));
         }
-      } else if ((e.key === "Enter" || e.key === " " || e.key === "ArrowRight") && revealed) {
-        e.preventDefault();
-        next();
       }
-    };
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [play, revealed, answer, next]);
+    } else if ((e.key === "Enter" || e.key === " " || e.key === "ArrowRight") && revealed) {
+      e.preventDefault();
+      next();
+    }
+  });
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => onKey(e);
+    document.addEventListener("keydown", handler);
+    return () => document.removeEventListener("keydown", handler);
+  }, []);
 
   // Result ガード用に最新の回答状況を保持 (Result へは next 経由でのみ遷移する)
+  const sessionAttemptId = session?.attemptId;
   useEffect(() => {
-    const cur = getSession();
-    if (cur && cur.attemptId === play.attemptId) {
-      setSession({ ...cur, answers: play.answers, score });
-    }
-  }, [play.attemptId, play.answers, score]);
+    if (sessionAttemptId !== play.attemptId) return;
+    setSession({
+      attemptId: play.attemptId,
+      quiz: play.quiz,
+      questions: play.questions,
+      answers: play.answers,
+      score,
+    });
+  }, [sessionAttemptId, play, score, setSession]);
 
   return (
     <div className="screen">
@@ -508,29 +525,11 @@ const PlayingScreen = ({ play, onChange }: { play: LivePlay; onChange: (p: LiveP
                   editable={!revealed}
                   disabled={play.busy}
                   autoFocusFirst={!revealed}
-                  onChange={(n, v) =>
-                    setInputs((prev) => {
-                      const nextInputs = [...prev];
-                      while (nextInputs.length < blankCount) nextInputs.push("");
-                      nextInputs[n - 1] = v;
-                      return nextInputs;
-                    })
-                  }
+                  onChange={setInput}
                 />
               </div>
               {!revealed && (blankCount >= 2 || q.statement.length > 100) && (
-                <ClozeFieldList
-                  values={inputs}
-                  disabled={play.busy}
-                  onChange={(n, v) =>
-                    setInputs((prev) => {
-                      const nextInputs = [...prev];
-                      while (nextInputs.length < blankCount) nextInputs.push("");
-                      nextInputs[n - 1] = v;
-                      return nextInputs;
-                    })
-                  }
-                />
+                <ClozeFieldList values={inputs} disabled={play.busy} onChange={setInput} />
               )}
               {!revealed && (
                 <button
@@ -611,7 +610,7 @@ const PlayingScreen = ({ play, onChange }: { play: LivePlay; onChange: (p: LiveP
                 <button
                   type="button"
                   className="btn btn-sm btn-ghost sheet-toggle"
-                  onClick={() => setExpCollapsed((v) => !v)}
+                  onClick={() => setCollapsedIndex(expCollapsed ? null : play.index)}
                   aria-expanded={!expCollapsed}
                 >
                   {expCollapsed ? "解説を見る" : "隠す"}
@@ -628,7 +627,7 @@ const PlayingScreen = ({ play, onChange }: { play: LivePlay; onChange: (p: LiveP
               <div className="sheet-actions">
                 <span className="kbd sheet-hint">Enterで次へ</span>
                 <button
-                  id="play-next"
+                  ref={nextRef}
                   type="button"
                   className={`btn ${last ? "btn-primary" : "btn-ink"}`}
                   onClick={next}

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import type { ComponentProps, ReactNode } from "react";
 import { useLocation, useNavigate, useParams } from "react-router";
 import { api, QUESTIONS_PER_QUIZ } from "../api";
 import type { Category, Quiz, QuizStatus, Topic } from "../api";
@@ -143,7 +144,12 @@ export const Admin = () => {
       dialog({
         title: "クイズの設定",
         okLabel: "保存",
-        fields: (setValue) => <QuizSettingsFields quiz={q} setValue={setValue} />,
+        fields: <QuizSettingsFields quiz={q} />,
+        readFields: (form) => ({
+          title: String(form.get("title") ?? "").trim(),
+          difficulty: Number(form.get("difficulty")),
+          status: form.get("status") as QuizStatus,
+        }),
       }).then((v) => {
         if (!v) return;
         const { title, difficulty, status } = v as {
@@ -415,7 +421,7 @@ const EntityHead = ({
   tone: "cat" | "topic" | "quiz";
   title: string;
   actions: { label: string; danger?: boolean; primary?: boolean; fn: () => void }[];
-  extra?: React.ReactNode;
+  extra?: ReactNode;
 }) => {
   return (
     <header className="entity-head">
@@ -427,7 +433,7 @@ const EntityHead = ({
         {extra}
       </div>
       <div className="entity-actions">
-        {actions.map((a) => (
+        {[...actions.filter((a) => a.danger), ...actions.filter((a) => !a.danger)].map((a) => (
           <button
             key={a.label}
             type="button"
@@ -442,19 +448,18 @@ const EntityHead = ({
   );
 };
 
-const DifficultySelect = ({
-  value,
-  onChange,
-}: {
-  value: number;
-  onChange: (n: number) => void;
-}) => {
+type SelectProps<T> = Omit<ComponentProps<"select">, "className" | "children" | "onChange"> & {
+  onValueChange?: (v: T) => void;
+};
+
+/** 難易度セレクト。制御 (value + onValueChange) / 非制御 (name + defaultValue) の両方で使う */
+const DifficultySelect = ({ onValueChange, ...rest }: SelectProps<number>) => {
   return (
     <select
+      {...rest}
       className="select"
       aria-label="難易度"
-      value={value}
-      onChange={(e) => onChange(Number(e.target.value))}
+      onChange={onValueChange && ((e) => onValueChange(Number(e.target.value)))}
     >
       {[1, 2, 3, 4, 5].map((n) => (
         <option key={n} value={n}>
@@ -465,19 +470,14 @@ const DifficultySelect = ({
   );
 };
 
-const StatusSelect = ({
-  value,
-  onChange,
-}: {
-  value: QuizStatus;
-  onChange: (s: QuizStatus) => void;
-}) => {
+/** 公開状態セレクト。DifficultySelect と同じく制御/非制御の両対応 */
+const StatusSelect = ({ onValueChange, ...rest }: SelectProps<QuizStatus>) => {
   return (
     <select
+      {...rest}
       className="select"
       aria-label="公開状態"
-      value={value}
-      onChange={(e) => onChange(e.target.value as QuizStatus)}
+      onChange={onValueChange && ((e) => onValueChange(e.target.value as QuizStatus))}
     >
       <option value="published">公開中</option>
       <option value="draft">下書き</option>
@@ -486,37 +486,28 @@ const StatusSelect = ({
   );
 };
 
-const QuizSettingsFields = ({ quiz, setValue }: { quiz: Quiz; setValue: (v: unknown) => void }) => {
-  const [title, setTitle] = useState(quiz.title);
-  const [difficulty, setDifficulty] = useState(quiz.difficulty);
-  const [status, setStatus] = useState<QuizStatus>(quiz.status);
-  useEffect(() => {
-    setValue(() => ({
-      title: title.trim(),
-      difficulty,
-      status,
-    }));
-  }, [setValue, title, difficulty, status]);
+/** クイズ設定ダイアログの入力欄 (非制御。値は OK 時に FormData で読む) */
+const QuizSettingsFields = ({ quiz }: { quiz: Quiz }) => {
   return (
     <div className="form-grid">
       <label className="field">
         <span className="label">クイズ名</span>
         <input
           className="input"
-          value={title}
+          name="title"
+          defaultValue={quiz.title}
           maxLength={100}
           aria-label="クイズ名"
-          onChange={(e) => setTitle(e.target.value)}
         />
       </label>
       <div className="form-grid cols-2">
         <label className="field">
           <span className="label">難易度</span>
-          <DifficultySelect value={difficulty} onChange={setDifficulty} />
+          <DifficultySelect name="difficulty" defaultValue={quiz.difficulty} />
         </label>
         <label className="field">
           <span className="label">公開状態</span>
-          <StatusSelect value={status} onChange={setStatus} />
+          <StatusSelect name="status" defaultValue={quiz.status} />
         </label>
       </div>
     </div>
@@ -581,10 +572,10 @@ const QuizCreateCard = ({
             }
           }}
         />
-        <DifficultySelect value={difficulty} onChange={setDifficulty} />
-        <StatusSelect value={status} onChange={setStatus} />
+        <DifficultySelect value={difficulty} onValueChange={setDifficulty} />
+        <StatusSelect value={status} onValueChange={setStatus} />
       </div>
-      <div className="row mt" style={{ justifyContent: "flex-end" }}>
+      <div className="actions actions-end">
         <button
           type="button"
           className="btn btn-primary"

@@ -1,0 +1,89 @@
+@layer utilities {
+  .hidden {
+    display: none !important;
+  }
+  .vh {
+    position: absolute !important;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+  .row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .wrap {
+    flex-wrap: wrap;
+  }
+  /* ボタン行。狭い画面では折り返す。中央寄せは空状態・エラー、右寄せはフォーム送信に使う */
+  .actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    margin-top: 16px;
+  }
+  .actions-center {
+    justify-content: center;
+  }
+  .actions-end {
+    justify-content: flex-end;
+  }
+  .between {
+    justify-content: space-between;
+  }
+  .grow {
+    flex: 1;
+    min-width: 0;
+  }
+  .stack {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .mt {
+    margin-top: 16px;
+  }
+  .mb {
+    margin-bottom: 16px;
+  }
+  .tnum {
+    font-variant-numeric: tabular-nums;
+  }
+  .tr {
+    text-align: right;
+  }
+}
+
+/* ---- rich text: ```code block + `inline` (unlayered で確実に適用) ---- */
+.rich {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+.q-statement.rich,
+.sheet-exp.rich,
+.review-body .exp.rich,
+.admin-preview.rich {
+  white-space: pre-wrap;
+}
+.rich .inline-code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.88em;
+  padding: 1px 6px;
+  border-radius: 6px;
+  border: 1px solid var(--rule);
+  background: var(--paper-3);
+  color: var(--ink);
+  white-space: pre-wrap;
+}
+.rich .code-block {
+  margin: 12px 0;
+  border: 1px solid var(--rule);
+  border-radius: var(--r-md);
+  overflow: hidden;
+  background: #1e1b16;
+  color: #f3ede1;
+}

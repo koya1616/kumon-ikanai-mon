@@ -1,0 +1,212 @@
+@layer layout {
+  .app {
+    min-height: 100dvh;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* ---- top nav (desktop) / brand (mobile) ---- */
+  .nav {
+    position: sticky;
+    top: 0;
+    z-index: 30;
+    height: var(--nav-h);
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 0 max(16px, env(safe-area-inset-left)) 0 max(16px, env(safe-area-inset-right));
+    background: color-mix(in srgb, var(--paper) 85%, transparent);
+    backdrop-filter: blur(14px) saturate(1.2);
+    border-bottom: 1px solid var(--rule-soft);
+  }
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    text-decoration: none;
+    color: inherit;
+  }
+  .brand-mark {
+    width: 34px;
+    height: 34px;
+    border-radius: 10px;
+    background: var(--shu);
+    color: #fff;
+    display: grid;
+    place-items: center;
+    font-family: var(--font-serif);
+    font-weight: 700;
+    font-size: 18px;
+    box-shadow: inset 0 -2px 0 rgba(0, 0, 0, 0.18);
+  }
+  .brand-text {
+    display: flex;
+    flex-direction: column;
+    line-height: 1.2;
+  }
+  .brand-name {
+    font-weight: 800;
+    font-size: 15px;
+    letter-spacing: 0.02em;
+  }
+  .brand-sub {
+    font-size: 11px;
+    color: var(--ink-3);
+    margin-top: -2px;
+  }
+  .nav-spacer {
+    flex: 1;
+  }
+  .nav-links {
+    display: none;
+    gap: 4px;
+  }
+  .nav-link {
+    padding: 8px 14px;
+    border-radius: var(--r-pill);
+    font-weight: 600;
+    font-size: 14px;
+    color: var(--ink-2);
+    text-decoration: none;
+    transition:
+      background 0.15s var(--ease),
+      color 0.15s var(--ease);
+  }
+  .nav-link:hover {
+    background: var(--paper-3);
+  }
+  .nav-link[aria-current="page"] {
+    background: var(--ink);
+    color: var(--paper);
+  }
+
+  /* ---- app shell: sidebar (desktop) + body ---- */
+  .shell {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+  }
+  .side {
+    display: none;
+  }
+  .shell .main {
+    flex: 1;
+    min-width: 0;
+  }
+  @media (min-width: 1020px) {
+    .shell {
+      flex-direction: row;
+      align-items: stretch;
+    }
+    .side {
+      display: flex;
+      flex-direction: column;
+      flex: none;
+      width: 232px;
+      position: sticky;
+      top: var(--nav-h);
+      height: calc(100dvh - var(--nav-h));
+      padding: 20px 12px;
+      border-right: 1px solid var(--rule-soft);
+      background: var(--paper-2);
+      overflow-y: auto;
+    }
+    .side-nav {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .side-link {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 14px;
+      border-radius: var(--r-md);
+      font-weight: 700;
+      font-size: 14px;
+      color: var(--ink-2);
+      text-decoration: none;
+      transition:
+        background 0.15s var(--ease),
+        color 0.15s var(--ease);
+    }
+    .side-link:hover {
+      background: var(--paper-3);
+    }
+    .side-link[aria-current="page"] {
+      background: var(--ink);
+      color: var(--paper);
+    }
+  }
+
+  /* ---- bottom tab bar (mobile) ---- */
+  .tabbar {
+    position: fixed;
+    inset-inline: 0;
+    bottom: 0;
+    z-index: 30;
+    height: calc(var(--tabbar-h) + env(safe-area-inset-bottom));
+    padding-bottom: env(safe-area-inset-bottom);
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    background: color-mix(in srgb, var(--paper-2) 92%, transparent);
+    backdrop-filter: blur(14px);
+    border-top: 1px solid var(--rule-soft);
+  }
+  .tab-link {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--ink-3);
+    text-decoration: none;
+  }
+  .tab-link svg {
+    width: 24px;
+    height: 24px;
+  }
+  .tab-link[aria-current="page"] {
+    color: var(--shu);
+  }
+
+  .main {
+    flex: 1;
+    width: 100%;
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: 20px 16px calc(var(--tabbar-h) + 32px);
+  }
+
+  @media (min-width: 760px) {
+    .nav-links {
+      display: flex;
+    }
+    .tabbar {
+      display: none;
+    }
+    .main {
+      padding: 32px 24px 48px;
+    }
+  }
+
+  /* 出題中は没入モード: ナビを隠す */
+  .app[data-mode="focus"] .nav,
+  .app[data-mode="focus"] .tabbar,
+  .app[data-mode="focus"] .side {
+    display: none;
+  }
+  .app[data-mode="focus"] .main {
+    padding: 0;
+    max-width: none;
+  }
+
+  /* ブックマークはフルブリード: シェルの幅制限を外す (bm-* が独自paddingを持つ) */
+  .app[data-page="bookmarks"] .main {
+    max-width: none;
+    padding: 0;
+  }
+}

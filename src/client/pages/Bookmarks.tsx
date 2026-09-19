@@ -130,7 +130,7 @@ export const Bookmarks = () => {
             <div className="card card-pad">
               <EmptyState glyph="！" title="ブックマークを取得できません" sub={state.message} />
             </div>
-            <div className="row mt" style={{ justifyContent: "center" }}>
+            <div className="actions actions-center">
               <button type="button" className="btn" onClick={() => navigate(-1)}>
                 戻る
               </button>
@@ -153,7 +153,7 @@ export const Bookmarks = () => {
                 title="条件に合う問題がありません"
                 sub="絞り込みを変えてみてください。"
               />
-              <div className="row mt" style={{ justifyContent: "center" }}>
+              <div className="actions actions-center">
                 <button
                   type="button"
                   className="btn"

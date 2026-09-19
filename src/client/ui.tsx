@@ -151,8 +151,24 @@ const SvgPaths = ({ d }: { d: string[] }) => {
   );
 };
 
-export const Icon = ({ name }: { name: "search" | "arrow" | "close" | "plus" }) => {
+export const Icon = ({
+  name,
+}: {
+  name: "search" | "arrow" | "close" | "plus" | "home" | "admin";
+}) => {
   switch (name) {
+    case "home":
+      return (
+        <span aria-hidden="true">
+          <SvgPaths d={["M3 11.5 12 4l9 7.5", "M5 10v10h5v-6h4v6h5V10"]} />
+        </span>
+      );
+    case "admin":
+      return (
+        <span aria-hidden="true">
+          <SvgPaths d={["M12 20h9", "M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"]} />
+        </span>
+      );
     case "search":
       return (
         <span className="row" aria-hidden="true">

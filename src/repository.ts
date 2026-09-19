@@ -249,10 +249,7 @@ export interface NewClozeQuestion {
 }
 
 /** 版ごとの空欄+正答を取得する (正答は代表1件。将来の複数正答はsort_order先頭) */
-async function loadClozeBlanks(
-  db: DB,
-  versionIds: number[],
-): Promise<Map<number, ClozeBlank[]>> {
+async function loadClozeBlanks(db: DB, versionIds: number[]): Promise<Map<number, ClozeBlank[]>> {
   const out = new Map<number, ClozeBlank[]>();
   if (!versionIds.length) return out;
   const placeholders = versionIds.map(() => "?").join(",");
@@ -354,7 +351,9 @@ async function insertClozeVersion(
       .bind(versionId, i + 1)
       .run();
     await db
-      .prepare("INSERT INTO question_cloze_answers (blank_id, answer_text, sort_order) VALUES (?,?,0)")
+      .prepare(
+        "INSERT INTO question_cloze_answers (blank_id, answer_text, sort_order) VALUES (?,?,0)",
+      )
       .bind(Number(br.meta.last_row_id), q.answers[i])
       .run();
   }
@@ -380,11 +379,7 @@ export async function createClozeQuestion(
 }
 
 /** 管理用: 穴埋め1問更新 (= 新しい version を発行する。履歴は残る) */
-export async function updateClozeQuestion(
-  db: DB,
-  id: number,
-  q: NewClozeQuestion,
-): Promise<void> {
+export async function updateClozeQuestion(db: DB, id: number, q: NewClozeQuestion): Promise<void> {
   const row = await db.prepare("SELECT id FROM questions WHERE id = ?").bind(id).first();
   if (!row) throw new Error("問題がありません");
   await insertClozeVersion(db, id, q);
@@ -799,12 +794,21 @@ export async function recordAnswer(
   if (!aq) throw new Error("この挑戦の問題ではありません");
   if (aq.completedAt !== null) throw new Error("この挑戦は完了しています");
   const version = await db
-    .prepare("SELECT explanation, question_type AS questionType FROM question_versions WHERE id = ?")
+    .prepare(
+      "SELECT explanation, question_type AS questionType FROM question_versions WHERE id = ?",
+    )
     .bind(aq.versionId)
     .first<{ explanation: string; questionType: QuestionType }>();
   if (!version) throw new Error("問題がありません");
   if (version.questionType === "cloze_text") {
-    return recordClozeAnswer(db, attemptId, attemptQuestionId, aq.versionId, version.explanation ?? "", input.answers);
+    return recordClozeAnswer(
+      db,
+      attemptId,
+      attemptQuestionId,
+      aq.versionId,
+      version.explanation ?? "",
+      input.answers,
+    );
   }
   const choice = input.choice;
   if (choice === undefined) throw new Error("choiceを指定してください");
@@ -821,7 +825,12 @@ export async function recordAnswer(
   const correctAnswer = correctRow?.position ?? 0;
   const correct = choice === correctAnswer ? 1 : 0;
   await insertAttemptHeader(db, attemptId, attemptQuestionId, choice, picked.text, "", correct);
-  return { correct: correct === 1, correctAnswer, explanation: version.explanation ?? "", details: [] };
+  return {
+    correct: correct === 1,
+    correctAnswer,
+    explanation: version.explanation ?? "",
+    details: [],
+  };
 }
 
 /** 回答ヘッダ1行の挿入 (二重回答・完了後回答の競合を検出する) */
@@ -871,17 +880,12 @@ async function recordClozeAnswer(
   }
   const trimmed = rawAnswers.map((s) => (typeof s === "string" ? s.trim() : ""));
   if (trimmed.some((s) => !s)) throw new Error("空欄が未入力です");
-  const per = gradeCloze(trimmed, blanks.map((b) => b.answer));
-  const allOk = per.every(Boolean) ? 1 : 0;
-  await insertAttemptHeader(
-    db,
-    attemptId,
-    attemptQuestionId,
-    null,
-    "",
-    trimmed.join(" / "),
-    allOk,
+  const per = gradeCloze(
+    trimmed,
+    blanks.map((b) => b.answer),
   );
+  const allOk = per.every(Boolean) ? 1 : 0;
+  await insertAttemptHeader(db, attemptId, attemptQuestionId, null, "", trimmed.join(" / "), allOk);
   const stmts = blanks.map((b, i) =>
     db
       .prepare(
@@ -1230,9 +1234,7 @@ export async function getQuizInsights(
 
   const clozeByVersion = await loadClozeBlanks(
     db,
-    [...byQuestion.values()]
-      .filter((q) => q.questionType === "cloze_text")
-      .map((q) => q.versionId),
+    [...byQuestion.values()].filter((q) => q.questionType === "cloze_text").map((q) => q.versionId),
   );
   return {
     attemptCount: attemptIds.size,
@@ -1416,7 +1418,10 @@ async function createReviewClozeAnswer(
   }
   const trimmed = rawAnswers.map((s) => (typeof s === "string" ? s.trim() : ""));
   if (trimmed.some((s) => !s)) throw new Error("空欄が未入力です");
-  const per = gradeCloze(trimmed, blanks.map((b) => b.answer));
+  const per = gradeCloze(
+    trimmed,
+    blanks.map((b) => b.answer),
+  );
   const allOk = per.every(Boolean) ? 1 : 0;
   const r = await db
     .prepare(

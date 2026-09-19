@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router";
-import { QUESTIONS_PER_QUIZ } from "../api";
-import { categoryStats, useTree } from "../tree";
-import { EmptyState, Icon, Ring, Skeletons, Stars } from "../ui";
-import type { AttemptState, CategoryTreeNode, Quiz } from "../api";
 import { api } from "../api";
+import { categoryStats, useTree } from "../tree";
+import { EmptyState, Icon, Ring, Skeletons } from "../ui";
+import { DifficultyFilter, QuizRow } from "../components/QuizRow";
+import type { AttemptState, CategoryTreeNode, Quiz } from "../api";
 import { clearResume, listResumes } from "../resume";
 
 interface InProgress {
@@ -123,7 +123,7 @@ export const Home = () => {
                 sub="管理画面からカテゴリ・トピック・クイズを作成してください。"
               />
             </div>
-            <div className="row mt" style={{ justifyContent: "center" }}>
+            <div className="actions actions-center">
               <Link className="btn btn-primary" to="/admin">
                 管理画面へ
               </Link>
@@ -350,20 +350,7 @@ const HomeTabs = ({
           </div>
           {tab === "quizzes" && (
             <>
-              <div className="diff-filter" role="group" aria-label="難易度で絞り込み">
-                {[0, 1, 2, 3, 4, 5].map((d) => (
-                  <button
-                    key={d}
-                    type="button"
-                    className="chip chip-btn"
-                    aria-pressed={diff === d ? "true" : "false"}
-                    data-d={d}
-                    onClick={() => setDiff(d)}
-                  >
-                    {d === 0 ? "すべて" : `★${d}`}
-                  </button>
-                ))}
-              </div>
+              <DifficultyFilter value={diff} onChange={setDiff} />
               <div role="group" aria-label="実施状態で絞り込み">
                 <button
                   type="button"
@@ -382,11 +369,7 @@ const HomeTabs = ({
         {tab === "categories" && <CategoryGrid tree={tree} statsOf={statsOf} />}
         {tab === "topics" && <TopicList topics={filteredTopics} />}
         {tab === "quizzes" && (
-          <QuizList
-            quizzes={filteredQuizzes}
-            hasFilter={quizFiltering}
-            onClear={clearQuizFilter}
-          />
+          <QuizList quizzes={filteredQuizzes} hasFilter={quizFiltering} onClear={clearQuizFilter} />
         )}
       </div>
     </section>
@@ -454,7 +437,7 @@ const QuizList = ({
           }
         />
         {hasFilter && onClear && (
-          <div className="row mt" style={{ justifyContent: "center" }}>
+          <div className="actions actions-center">
             <button type="button" className="btn" onClick={onClear}>
               絞り込みをクリア
             </button>
@@ -466,57 +449,17 @@ const QuizList = ({
   return (
     <div className="quiz-list">
       {quizzes.map((q) => (
-        <HomeQuizRow key={q.id} quiz={q} onPlay={() => navigate(`/play/${q.id}`)} />
-      ))}
-    </div>
-  );
-};
-
-const HomeQuizRow = ({ quiz: q, onPlay }: { quiz: QuizWithPath; onPlay: () => void }) => {
-  const { summary } = useTree();
-  const sm = summary[q.id];
-  const readyQ = q.questionCount >= QUESTIONS_PER_QUIZ;
-  const perfect = !!sm?.attemptCount && sm.bestScore >= sm.bestTotal && sm.bestTotal > 0;
-  const markCls = "quiz-mark" + (perfect ? " is-perfect" : sm?.attemptCount ? " is-tried" : "");
-  return (
-    <div className="quiz-row-wrap">
-      <button
-        type="button"
-        className="quiz-row quiz-row-main"
-        disabled={!readyQ}
-        title={readyQ ? "" : "問題が10問そろっていません"}
-        onClick={onPlay}
-        aria-label={`${q.title}に挑戦する`}
-      >
-        <div className={markCls} aria-hidden="true">
-          {perfect ? "優" : sm?.attemptCount ? "再" : "未"}
-        </div>
-        <div className="grow">
-          <div className="quiz-row-title">{q.title}</div>
-          <div className="quiz-row-meta">
+        <QuizRow
+          key={q.id}
+          quiz={q}
+          meta={
             <span>
               {q.categoryTitle} › {q.topicTitle}
             </span>
-            <Stars n={q.difficulty} />
-          </div>
-        </div>
-        {readyQ ? (
-          sm?.attemptCount ? (
-            <div className="quiz-row-right">
-              <strong>
-                {sm.bestScore}/{sm.bestTotal}
-              </strong>
-              <span>{sm.attemptCount}回</span>
-            </div>
-          ) : null
-        ) : (
-          <div className="quiz-row-right">
-            <span className="chip chip-yamabuki">
-              準備中 {q.questionCount}/{QUESTIONS_PER_QUIZ}
-            </span>
-          </div>
-        )}
-      </button>
+          }
+          onPlay={() => navigate(`/play/${q.id}`)}
+        />
+      ))}
     </div>
   );
 };

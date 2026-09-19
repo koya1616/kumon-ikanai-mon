@@ -1,11 +1,11 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router";
 import { api, isCloze } from "../api";
 import type { AttemptRecord } from "../api";
 import { clearResume } from "../resume";
 import { ClozeAnswerList, ClozeFieldList, ClozeStatement } from "../cloze";
 import { RichText } from "../rich";
-import { getSession } from "../session";
+import { usePlaySession } from "../session";
 import type { SessionAnswer } from "../session";
 import { BookmarkButton } from "../bookmark";
 import { Crumbs, fmtDate, Ring, Stars } from "../ui";
@@ -40,11 +40,14 @@ const messageOf = (score: number, total: number): string => {
 export const Result = () => {
   const navigate = useNavigate();
   const { loadTree } = useTree();
-  const [ses] = useState(getSession);
+  // マウント時点のセッションを固定する (以後の更新で画面を作り直さない)
+  const { session } = usePlaySession();
+  const [ses] = useState(session);
   const [score, setScore] = useState<number | null>(null);
   const [history, setHistory] = useState<AttemptRecord[] | null>(null);
   const [historyError, setHistoryError] = useState(false);
   const [drill, setDrill] = useState<DrillState | null>(null);
+  const reviewRef = useRef<HTMLElement>(null);
 
   useEffect(() => {
     if (!ses || !ses.answers.length) {
@@ -108,7 +111,7 @@ export const Result = () => {
   const startDrill = () => {
     if (!ng.length) return;
     setDrill({ order: ng.map(({ i }) => i), pos: 0, picks: {}, doneCount: 0 });
-    document.getElementById("review")?.scrollIntoView({ behavior: "smooth" });
+    reviewRef.current?.scrollIntoView({ behavior: "smooth" });
   };
 
   return (
@@ -184,9 +187,11 @@ export const Result = () => {
       {/* ===== 全幅ボディ: 復習 + 記録 ===== */}
       <div className="result-body">
         <div className="result-layout">
-          <section id="review" aria-label="ふりかえり">
+          <section id="review" ref={reviewRef} aria-label="ふりかえり">
             {drill ? (
               <DrillCard
+                // 問題ごとに作り直し、穴埋めの入力と採点結果をリセットする
+                key={drill.order[drill.pos]}
                 ses_answers={ses.answers}
                 drill={drill}
                 onChange={setDrill}
@@ -274,11 +279,9 @@ export const Result = () => {
 
       {/* ===== 下部追従バー (モバイルで指が届く位置) ===== */}
       <div className="result-bottombar">
-        {ng.length > 0 && (
-          <button type="button" className="btn btn-primary" onClick={startDrill}>
-            間違いだけ（{ng.length}）
-          </button>
-        )}
+        <Link className="btn" to={`/c/${ses.quiz.categoryId}`}>
+          一覧
+        </Link>
         <button
           type="button"
           className="btn btn-ink"
@@ -286,9 +289,11 @@ export const Result = () => {
         >
           もう一度
         </button>
-        <Link className="btn" to={`/c/${ses.quiz.categoryId}`}>
-          一覧
-        </Link>
+        {ng.length > 0 && (
+          <button type="button" className="btn btn-primary" onClick={startDrill}>
+            間違いだけ（{ng.length}）
+          </button>
+        )}
       </div>
     </div>
   );
@@ -406,10 +411,6 @@ const DrillCard = ({
     Array(target.details.length).fill(""),
   );
   const [drillOk, setDrillOk] = useState<boolean | null>(null);
-  useEffect(() => {
-    setDrillInputs(Array(target.details.length).fill(""));
-    setDrillOk(null);
-  }, [qIndex, target.details.length]);
   const submitDrillCloze = () => {
     if (drillOk !== null || drillInputs.some((s) => !s.trim())) return;
     const ok = target.details.every((d, i) => isClozeAnswerEqual(drillInputs[i]!, d.answer));
@@ -460,7 +461,9 @@ const DrillCard = ({
               values={drillInputs}
               status={
                 drillRevealed
-                  ? target.details.map((d, i) => (isClozeAnswerEqual(drillInputs[i]!, d.answer) ? "ok" : "ng"))
+                  ? target.details.map((d, i) =>
+                      isClozeAnswerEqual(drillInputs[i]!, d.answer) ? "ok" : "ng",
+                    )
                   : undefined
               }
               answers={drillRevealed ? target.details.map((d) => d.answer) : undefined}
@@ -534,7 +537,11 @@ const DrillCard = ({
       {(targetCloze ? drillRevealed : revealed) && (
         <div className="drill-feedback">
           <p className={drillCorrect ? "is-good" : "is-bad"}>
-            {drillCorrect ? "正解！よく直せたね" : targetCloze ? "正解は…" : `正解は ${target.correct} 番`}
+            {drillCorrect
+              ? "正解！よく直せたね"
+              : targetCloze
+                ? "正解は…"
+                : `正解は ${target.correct} 番`}
             {" · "}
             現在 {correctCount} / {drill.doneCount} 正解
           </p>

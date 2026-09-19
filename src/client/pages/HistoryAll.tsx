@@ -47,7 +47,7 @@ export const HistoryAll = () => {
           <div className="card card-pad">
             <EmptyState glyph="！" title="履歴を取得できません" sub={state.message} />
           </div>
-          <div className="row mt" style={{ justifyContent: "center" }}>
+          <div className="actions actions-center">
             <button type="button" className="btn" onClick={() => navigate(-1)}>
               戻る
             </button>
@@ -216,7 +216,7 @@ const HistoryTabs = ({ items }: { items: AttemptHistoryItem[] }) => {
         )}
       </div>
       {selectedGroup && (
-        <div className="row wrap mb" style={{ justifyContent: "space-between" }}>
+        <div className="row wrap mb between">
           <div className="title-md">
             {selectedGroup.title} <span className="muted">({filtered.length}件)</span>
           </div>

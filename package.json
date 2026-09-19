@@ -16,8 +16,8 @@
   "type": "module",
   "scripts": {
     "dev": "pnpm build:client && wrangler dev",
-    "dev:client": "node scripts/build-client.mjs --watch",
-    "build:client": "node scripts/build-client.mjs",
+    "dev:client": "node scripts/build-client.ts --watch",
+    "build:client": "node scripts/build-client.ts",
     "deploy": "pnpm build:client && wrangler deploy",
     "db:migrate:local": "wrangler d1 migrations apply kumon-ikanai-mon-db --local",
     "db:seed:local": "wrangler d1 execute kumon-ikanai-mon-db --local --file=./seed.sql",

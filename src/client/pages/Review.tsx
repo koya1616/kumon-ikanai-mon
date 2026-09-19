@@ -1,11 +1,12 @@
 // 苦手一括復習ページ (#/review)。練習扱いのため attempt は作らず、
 // POST /api/review/answers で1回答ずつ記録する。attempts系の履歴・スコアには影響しない。
 // 直近REVIEW_CLEAR_STREAK連続正解で苦手解消となる。
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router";
 import { api, isCloze } from "../api";
 import type { MistakeItem, ReviewAnswerResult } from "../api";
 import { BookmarkButton } from "../bookmark";
+import { useDialogOpen } from "../dialog";
 import { ClozeAnswerList, ClozeFieldList, ClozeStatement } from "../cloze";
 import { RichText } from "../rich";
 import { shuffle } from "../resume";
@@ -24,13 +25,17 @@ export const Review = () => {
   const [params] = useSearchParams();
   const quizFilter = Number(params.get("quiz")) || null;
   const [state, setState] = useState<LoadState>({ name: "loading" });
+  const dialogOpen = useDialogOpen();
+  const nextRef = useRef<HTMLButtonElement>(null);
+  const againRef = useRef<HTMLButtonElement>(null);
   const [order, setOrder] = useState<MistakeItem[]>([]);
   const [pos, setPos] = useState(0);
   const [picks, setPicks] = useState<Record<number, number>>({});
   const [clozeInputs, setClozeInputs] = useState<Record<number, string[]>>({});
   const [clozeResults, setClozeResults] = useState<Record<number, ReviewAnswerResult>>({});
   const [clozeBusy, setClozeBusy] = useState(false);
-  const [expCollapsed, setExpCollapsed] = useState(false);
+  // 解説を折りたたんだ問題 (questionVersionId)。別の問題に進めば開いた状態に戻る
+  const [collapsedFor, setCollapsedFor] = useState<number | null>(null);
   // 1周回を束ねるID (集計用予約。サーバ側はNULL可だが常に送る)
   const [sessionId] = useState(() =>
     typeof crypto !== "undefined" && "randomUUID" in crypto
@@ -68,7 +73,7 @@ export const Review = () => {
     setClozeInputs({});
     setClozeResults({});
     setServerInfo({});
-    setExpCollapsed(false);
+    setCollapsedFor(null);
     window.scrollTo(0, 0);
   }, [state]);
 
@@ -77,6 +82,7 @@ export const Review = () => {
   const picked = target ? picks[target.questionVersionId] : undefined;
   const clozeResult = target ? clozeResults[target.questionVersionId] : undefined;
   const revealed = picked !== undefined || clozeResult !== undefined;
+  const expCollapsed = !!target && collapsedFor === target.questionVersionId;
 
   const { doneCount, correctCount } = useMemo(() => {
     const entries = Object.entries(picks);
@@ -139,44 +145,41 @@ export const Review = () => {
     if (!revealed) return;
     if (pos + 1 < order.length) {
       setPos((p) => p + 1);
-      setExpCollapsed(false);
       window.scrollTo(0, 0);
     }
   }, [revealed, pos, order.length]);
 
   useEffect(() => {
-    if (revealed) {
-      setExpCollapsed(false);
-      document.getElementById("review-next")?.focus({ preventScroll: true });
-    }
+    if (revealed) nextRef.current?.focus({ preventScroll: true });
   }, [revealed, pos]);
 
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.metaKey || e.ctrlKey || e.altKey) return;
-      const dlg = document.getElementById("dialog") as HTMLDialogElement | null;
-      if (dlg?.open) return;
-      if (state.name !== "ready" || !target) return;
-      if (e.key >= "1" && e.key <= "4" && !revealed) {
-        if (!isCloze(target.questionType)) {
-          const idx = Number(e.key) - 1;
-          if (target.choices[idx] !== undefined) {
-            e.preventDefault();
-            pick(Number(e.key));
-          }
-        }
-      } else if ((e.key === "Enter" || e.key === " " || e.key === "ArrowRight") && revealed) {
-        e.preventDefault();
-        if (finished) {
-          document.getElementById("review-again")?.focus();
-        } else {
-          next();
+  // ショートカット。最新の state を読むため effect event にし、購読は1回だけにする
+  const onKey = useEffectEvent((e: KeyboardEvent) => {
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    if (dialogOpen) return;
+    if (state.name !== "ready" || !target) return;
+    if (e.key >= "1" && e.key <= "4" && !revealed) {
+      if (!isCloze(target.questionType)) {
+        const idx = Number(e.key) - 1;
+        if (target.choices[idx] !== undefined) {
+          e.preventDefault();
+          pick(Number(e.key));
         }
       }
-    };
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [state.name, target, revealed, finished, pick, next]);
+    } else if ((e.key === "Enter" || e.key === " " || e.key === "ArrowRight") && revealed) {
+      e.preventDefault();
+      if (finished) {
+        againRef.current?.focus();
+      } else {
+        next();
+      }
+    }
+  });
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => onKey(e);
+    document.addEventListener("keydown", handler);
+    return () => document.removeEventListener("keydown", handler);
+  }, []);
 
   if (state.name === "loading") {
     return (
@@ -195,7 +198,7 @@ export const Review = () => {
           <div className="card card-pad">
             <EmptyState glyph="！" title="苦手を取得できません" sub={state.message} />
           </div>
-          <div className="row mt" style={{ justifyContent: "center" }}>
+          <div className="actions actions-center">
             <button type="button" className="btn" onClick={() => navigate(-1)}>
               戻る
             </button>
@@ -223,7 +226,7 @@ export const Review = () => {
               sub="間違えた問題があると、ここに溜まっていきます。2回連続で正解するとリストから消えます。"
             />
           </div>
-          <div className="row mt" style={{ justifyContent: "center" }}>
+          <div className="actions actions-center">
             <Link className="btn btn-primary" to="/">
               ホームへ戻る
             </Link>
@@ -260,12 +263,7 @@ export const Review = () => {
                 : "2回連続で正解した問題は、次回の苦手リストから消えます。"}
             </p>
             <div className="row mt">
-              <button
-                id="review-again"
-                type="button"
-                className="btn btn-primary"
-                onClick={reshuffle}
-              >
+              <button ref={againRef} type="button" className="btn btn-primary" onClick={reshuffle}>
                 もう一周（シャッフル）
               </button>
               <Link className="btn" to="/">
@@ -318,17 +316,23 @@ export const Review = () => {
           <div className="drill-card">
             <div className="section-head">
               <h1 className="title-md">苦手だけ復習 · 残り{remaining}問</h1>
-              <button type="button" className="btn btn-sm btn-ghost" onClick={() => navigate("/")}>
-                終わる
-              </button>
+              <div className="row">
+                <BookmarkButton questionId={target.questionId} />
+                <button
+                  type="button"
+                  className="btn btn-sm btn-ghost"
+                  onClick={() => navigate("/")}
+                >
+                  終わる
+                </button>
+              </div>
             </div>
             <div className="drill-progress" aria-hidden="true">
               <i style={{ width: `${(doneCount / order.length) * 100}%` }} />
             </div>
             <p className="muted">
               {target.mistakeCount > 1 ? `${target.mistakeCount}回間違い · ` : ""}元クイズ:{" "}
-              <Link to={`/play/${target.quizId}`}>{target.quizTitle}</Link>{" "}
-              <BookmarkButton questionId={target.questionId} />
+              <Link to={`/play/${target.quizId}`}>{target.quizTitle}</Link>
             </p>
             {targetCloze ? (
               <form
@@ -461,7 +465,9 @@ export const Review = () => {
                 <button
                   type="button"
                   className="btn btn-sm btn-ghost sheet-toggle"
-                  onClick={() => setExpCollapsed((v) => !v)}
+                  onClick={() =>
+                    setCollapsedFor(expCollapsed ? null : (target?.questionVersionId ?? null))
+                  }
                   aria-expanded={!expCollapsed}
                 >
                   {expCollapsed ? "解説を見る" : "隠す"}
@@ -478,7 +484,7 @@ export const Review = () => {
               <div className="sheet-actions">
                 <span className="kbd sheet-hint">Enterで次へ</span>
                 <button
-                  id="review-next"
+                  ref={nextRef}
                   type="button"
                   className={`btn ${pos + 1 >= order.length ? "btn-primary" : "btn-ink"}`}
                   onClick={next}

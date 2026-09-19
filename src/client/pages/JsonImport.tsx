@@ -164,10 +164,7 @@ export const JsonImportCard = () => {
           の形式で混在可。
         </span>
       </div>
-      <div className="row mt wrap">
-        <button type="button" className="btn btn-sm" onClick={() => check(text)}>
-          内容を確認
-        </button>
+      <div className="actions">
         <button
           type="button"
           className="btn btn-sm btn-ghost"
@@ -179,16 +176,19 @@ export const JsonImportCard = () => {
         >
           雛形を入れる
         </button>
-        {preview && (
-          <div className="chip chip-moegi">
-            <span>
-              「{preview.category} › {preview.topic} › {preview.title}」 {preview.count}問
-            </span>
-          </div>
-        )}
+        <button type="button" className="btn btn-sm" onClick={() => check(text)}>
+          内容を確認
+        </button>
       </div>
+      {preview && (
+        <div className="row mt">
+          <span className="chip chip-moegi">
+            「{preview.category} › {preview.topic} › {preview.title}」 {preview.count}問
+          </span>
+        </div>
+      )}
       <p className="muted">{msg}</p>
-      <div className="row mt" style={{ justifyContent: "flex-end" }}>
+      <div className="actions actions-end">
         <button type="button" className="btn btn-primary" disabled={busy} onClick={submit}>
           JSONで登録する
         </button>

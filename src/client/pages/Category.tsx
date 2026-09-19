@@ -1,9 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router";
-import { QUESTIONS_PER_QUIZ } from "../api";
 import { categoryStats, useTree } from "../tree";
-import { Crumbs, EmptyState, Icon, Ring, Skeletons, Stars } from "../ui";
-import type { Quiz } from "../api";
+import { Crumbs, EmptyState, Icon, Ring, Skeletons } from "../ui";
+import { DifficultyFilter, QuizRow } from "../components/QuizRow";
 
 export const Category = () => {
   const { id } = useParams();
@@ -94,20 +93,7 @@ export const Category = () => {
                 onChange={(e) => setKw(e.target.value)}
               />
             </div>
-            <div className="diff-filter" role="group" aria-label="難易度で絞り込み">
-              {[0, 1, 2, 3, 4, 5].map((d) => (
-                <button
-                  key={d}
-                  type="button"
-                  className="chip chip-btn"
-                  aria-pressed={diff === d ? "true" : "false"}
-                  data-d={d}
-                  onClick={() => setDiff(d)}
-                >
-                  {d === 0 ? "すべて" : `★${d}`}
-                </button>
-              ))}
-            </div>
+            <DifficultyFilter value={diff} onChange={setDiff} />
           </div>
           {blocks.length > 1 && (
             <nav className="cat-topic-nav" aria-label="トピック">
@@ -147,7 +133,7 @@ export const Category = () => {
               }
             />
             {filtering && (
-              <div className="row mt" style={{ justifyContent: "center" }}>
+              <div className="actions actions-center">
                 <button
                   type="button"
                   className="btn"
@@ -163,52 +149,6 @@ export const Category = () => {
           </div>
         )}
       </div>
-    </div>
-  );
-};
-
-const QuizRow = ({ quiz: q, onPlay }: { quiz: Quiz; onPlay: () => void }) => {
-  const { summary } = useTree();
-  const sm = summary[q.id];
-  const readyQ = q.questionCount >= QUESTIONS_PER_QUIZ;
-  const perfect = !!sm?.attemptCount && sm.bestScore >= sm.bestTotal && sm.bestTotal > 0;
-  const markCls = "quiz-mark" + (perfect ? " is-perfect" : sm?.attemptCount ? " is-tried" : "");
-  return (
-    <div className="quiz-row-wrap">
-      <button
-        type="button"
-        className="quiz-row quiz-row-main"
-        disabled={!readyQ}
-        title={readyQ ? "" : "問題が10問そろっていません"}
-        onClick={onPlay}
-        aria-label={`${q.title}に挑戦する`}
-      >
-        <div className={markCls} aria-hidden="true">
-          {perfect ? "優" : sm?.attemptCount ? "再" : "未"}
-        </div>
-        <div className="grow">
-          <div className="quiz-row-title">{q.title}</div>
-          <div className="quiz-row-meta">
-            <Stars n={q.difficulty} />
-          </div>
-        </div>
-        {readyQ ? (
-          sm?.attemptCount ? (
-            <div className="quiz-row-right">
-              <strong>
-                {sm.bestScore}/{sm.bestTotal}
-              </strong>
-              <span>{sm.attemptCount}回</span>
-            </div>
-          ) : null
-        ) : (
-          <div className="quiz-row-right">
-            <span className="chip chip-yamabuki">
-              準備中 {q.questionCount}/{QUESTIONS_PER_QUIZ}
-            </span>
-          </div>
-        )}
-      </button>
     </div>
   );
 };

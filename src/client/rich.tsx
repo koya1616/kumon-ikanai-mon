@@ -1,7 +1,7 @@
 // リッチテキスト描画 (```fence コードブロック + `inline` 対応 / XSS-safe)。
 // ユーザー入力を innerHTML に渡さず、テキストノードの組み立てのみで描画する。
-import { useState } from "react";
-import type { ReactNode } from "react";
+import { useEffect, useState } from "react";
+import type { MouseEvent, ReactNode } from "react";
 
 /** statement中の {{n}} マーカーで分割する (コード内は対象外にするためInlinePartsから呼ぶ) */
 export const splitClozeParts = (text: string): ({ text: string } | { blank: number })[] => {
@@ -75,28 +75,18 @@ const CodeBlock = ({ lang, code }: { lang: string; code: string }) => {
   const [copied, setCopied] = useState(false);
   const body = code.replace(/\n$/, "");
   const label = lang.trim() || "code";
-  const copy = async (e: React.MouseEvent) => {
+  useEffect(() => {
+    if (!copied) return;
+    const t = setTimeout(() => setCopied(false), 1200);
+    return () => clearTimeout(t);
+  }, [copied]);
+  const copy = (e: MouseEvent) => {
     e.stopPropagation();
-    const done = () => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1200);
-    };
-    try {
-      if (navigator.clipboard?.writeText) {
-        await navigator.clipboard.writeText(body);
-        done();
-      } else {
-        const ta = document.createElement("textarea");
-        ta.value = body;
-        document.body.appendChild(ta);
-        ta.select();
-        document.execCommand("copy");
-        ta.remove();
-        done();
-      }
-    } catch {
-      done();
-    }
+    // 失敗 (非セキュアコンテキスト等) でも操作の手応えは返す
+    void navigator.clipboard
+      ?.writeText(body)
+      .catch(() => {})
+      .finally(() => setCopied(true));
   };
   return (
     <div className="code-block">

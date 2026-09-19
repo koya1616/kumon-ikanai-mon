@@ -1,0 +1,59 @@
+@layer tokens {
+  :root {
+    color-scheme: light;
+    --paper: #f7f2e8;
+    --paper-2: #fffdf8;
+    --paper-3: #efe7d8;
+    --rule: #dccfb8;
+    --rule-soft: #ebe1cf;
+    --ink: #1f1a17;
+    --ink-2: #4a423b;
+    --ink-3: #8a7f74;
+    --shu: #d7443e;
+    --shu-2: #b4322d;
+    --shu-soft: #fbe6e3;
+    --ai: #2b5f8a;
+    --ai-soft: #e2edf5;
+    --moegi: #3b8b5a;
+    --moegi-soft: #e2f2e7;
+    --yamabuki: #e0a02a;
+    --yamabuki-soft: #fbf0d4;
+    --shadow-1: 0 1px 2px rgba(31, 26, 23, 0.06), 0 2px 8px rgba(31, 26, 23, 0.05);
+    --shadow-2: 0 4px 16px rgba(31, 26, 23, 0.1), 0 12px 32px rgba(31, 26, 23, 0.08);
+    --r-sm: 8px;
+    --r-md: 14px;
+    --r-lg: 22px;
+    --r-pill: 999px;
+    --font-sans:
+      "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Noto Sans JP", "Yu Gothic UI", system-ui,
+      sans-serif;
+    --font-serif: "Hiragino Mincho ProN", "Yu Mincho", "Noto Serif JP", serif;
+    --nav-h: 64px;
+    --tabbar-h: 64px;
+    --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      color-scheme: dark;
+      --paper: #17140f;
+      --paper-2: #1f1b15;
+      --paper-3: #2a251d;
+      --rule: #3d362b;
+      --rule-soft: #2f2922;
+      --ink: #f1eadf;
+      --ink-2: #cfc5b6;
+      --ink-3: #8f8577;
+      --shu: #ef6a62;
+      --shu-2: #f28a83;
+      --shu-soft: #3c1f1c;
+      --ai: #7fb0dc;
+      --ai-soft: #1c2b39;
+      --moegi: #6fc48a;
+      --moegi-soft: #1a2f22;
+      --yamabuki: #f0b94a;
+      --yamabuki-soft: #3a2f16;
+      --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.4), 0 2px 8px rgba(0, 0, 0, 0.3);
+      --shadow-2: 0 4px 16px rgba(0, 0, 0, 0.5), 0 12px 32px rgba(0, 0, 0, 0.4);
+    }
+  }
+}

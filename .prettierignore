@@ -1,2 +1,2 @@
-# 生成物 (src/client から `pnpm build:client` で再生成する)
-src/ui/app.client.js
+# 生成物 (src/client から `pnpm build:client` で再生成する・git管理外)
+dist/client/app.client.js

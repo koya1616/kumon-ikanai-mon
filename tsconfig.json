@@ -42,5 +42,6 @@
     "skipLibCheck": true,
 
     "moduleResolution": "bundler"
-  }
+  },
+  "exclude": ["node_modules", "dist"]
 }
