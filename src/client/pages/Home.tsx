@@ -267,6 +267,9 @@ const HomeTabs = ({
 }) => {
   const [tab, setTab] = useState<HomeTab>("categories");
   const [kw, setKw] = useState("");
+  const [diff, setDiff] = useState(0);
+  const [onlyUntried, setOnlyUntried] = useState(false);
+  const { summary } = useTree();
   const keyword = kw.trim();
 
   const topics = useMemo(
@@ -295,14 +298,21 @@ const HomeTabs = ({
   const filteredTopics = keyword
     ? topics.filter((t) => t.title.includes(keyword) || t.categoryTitle.includes(keyword))
     : topics;
-  const filteredQuizzes = keyword
-    ? quizzes.filter(
-        (q) =>
-          q.title.includes(keyword) ||
-          q.topicTitle.includes(keyword) ||
-          q.categoryTitle.includes(keyword),
-      )
-    : quizzes;
+  const filteredQuizzes = quizzes.filter(
+    (q) =>
+      (!keyword ||
+        q.title.includes(keyword) ||
+        q.topicTitle.includes(keyword) ||
+        q.categoryTitle.includes(keyword)) &&
+      (!diff || q.difficulty === diff) &&
+      (!onlyUntried || !summary[q.id]?.attemptCount),
+  );
+  const quizFiltering = keyword !== "" || diff !== 0 || onlyUntried;
+  const clearQuizFilter = () => {
+    setKw("");
+    setDiff(0);
+    setOnlyUntried(false);
+  };
 
   return (
     <section aria-label="一覧切り替え">
@@ -338,12 +348,46 @@ const HomeTabs = ({
               onChange={(e) => setKw(e.target.value)}
             />
           </div>
+          {tab === "quizzes" && (
+            <>
+              <div className="diff-filter" role="group" aria-label="難易度で絞り込み">
+                {[0, 1, 2, 3, 4, 5].map((d) => (
+                  <button
+                    key={d}
+                    type="button"
+                    className="chip chip-btn"
+                    aria-pressed={diff === d ? "true" : "false"}
+                    data-d={d}
+                    onClick={() => setDiff(d)}
+                  >
+                    {d === 0 ? "すべて" : `★${d}`}
+                  </button>
+                ))}
+              </div>
+              <div role="group" aria-label="実施状態で絞り込み">
+                <button
+                  type="button"
+                  className="chip chip-btn"
+                  aria-pressed={onlyUntried ? "true" : "false"}
+                  onClick={() => setOnlyUntried((v) => !v)}
+                >
+                  未実施のみ
+                </button>
+              </div>
+            </>
+          )}
         </div>
       )}
       <div role="tabpanel">
         {tab === "categories" && <CategoryGrid tree={tree} statsOf={statsOf} />}
         {tab === "topics" && <TopicList topics={filteredTopics} />}
-        {tab === "quizzes" && <QuizList quizzes={filteredQuizzes} hasFilter={keyword !== ""} />}
+        {tab === "quizzes" && (
+          <QuizList
+            quizzes={filteredQuizzes}
+            hasFilter={quizFiltering}
+            onClear={clearQuizFilter}
+          />
+        )}
       </div>
     </section>
   );
@@ -389,7 +433,15 @@ const TopicList = ({ topics }: { topics: TopicWithCategory[] }) => {
 type QuizWithPath = Quiz & { categoryTitle: string; topicTitle: string };
 
 /** フラットなクイズ一覧。Category の行表示を再利用する。 */
-const QuizList = ({ quizzes, hasFilter }: { quizzes: QuizWithPath[]; hasFilter: boolean }) => {
+const QuizList = ({
+  quizzes,
+  hasFilter,
+  onClear,
+}: {
+  quizzes: QuizWithPath[];
+  hasFilter: boolean;
+  onClear?: () => void;
+}) => {
   const navigate = useNavigate();
   if (!quizzes.length) {
     return (
@@ -401,6 +453,13 @@ const QuizList = ({ quizzes, hasFilter }: { quizzes: QuizWithPath[]; hasFilter: 
             hasFilter ? "検索条件を変えてみてください。" : "管理画面でクイズを追加してください。"
           }
         />
+        {hasFilter && onClear && (
+          <div className="row mt" style={{ justifyContent: "center" }}>
+            <button type="button" className="btn" onClick={onClear}>
+              絞り込みをクリア
+            </button>
+          </div>
+        )}
       </div>
     );
   }
