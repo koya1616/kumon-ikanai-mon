@@ -265,16 +265,6 @@ export const Result = () => {
               <Link className="btn btn-block" to={`/h/${ses.quiz.id}`}>
                 詳しい履歴を見る
               </Link>
-              <button
-                type="button"
-                className="btn btn-ink btn-block"
-                onClick={() => navigate(`/play/${ses.quiz.id}`)}
-              >
-                もう一度挑戦
-              </button>
-              <Link className="btn btn-block" to="/">
-                ホームへ戻る
-              </Link>
             </div>
           </aside>
         </div>
