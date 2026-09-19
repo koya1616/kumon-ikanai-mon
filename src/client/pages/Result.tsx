@@ -10,6 +10,7 @@ import type { SessionAnswer } from "../session";
 import { BookmarkButton } from "../bookmark";
 import { Crumbs, fmtDate, Ring, Stars } from "../ui";
 import { useTree } from "../tree";
+import { isClozeAnswerEqual } from "../../domain";
 
 type Tone = "is-full" | "is-good" | "is-mid" | "is-bad";
 
@@ -411,7 +412,7 @@ const DrillCard = ({
   }, [qIndex, target.details.length]);
   const submitDrillCloze = () => {
     if (drillOk !== null || drillInputs.some((s) => !s.trim())) return;
-    const ok = target.details.every((d, i) => drillInputs[i]!.trim() === d.answer);
+    const ok = target.details.every((d, i) => isClozeAnswerEqual(drillInputs[i]!, d.answer));
     setDrillOk(ok);
     onChange({
       ...drill,
@@ -459,7 +460,7 @@ const DrillCard = ({
               values={drillInputs}
               status={
                 drillRevealed
-                  ? target.details.map((d, i) => (drillInputs[i]!.trim() === d.answer ? "ok" : "ng"))
+                  ? target.details.map((d, i) => (isClozeAnswerEqual(drillInputs[i]!, d.answer) ? "ok" : "ng"))
                   : undefined
               }
               answers={drillRevealed ? target.details.map((d) => d.answer) : undefined}

@@ -18,6 +18,7 @@ import { BookmarkButton } from "../bookmark";
 import { ClozeAnswerList, ClozeStatement } from "../cloze";
 import { RichText } from "../rich";
 import { Crumbs, EmptyState, Skeletons, Stars } from "../ui";
+import { isClozeAnswerEqual } from "../../domain";
 
 /** 定着とみなす直近の連続正解数 (苦手復習の解消条件と揃える) */
 const SOLID_STREAK = 2;
@@ -700,7 +701,7 @@ const AttemptPanel = ({
                             values={it.pickedAnswers}
                             status={it.pickedAnswers.map((_, i) =>
                               it.correctAnswers[i] !== undefined &&
-                              it.pickedAnswers[i]!.trim() === it.correctAnswers[i]
+                              isClozeAnswerEqual(it.pickedAnswers[i]!, it.correctAnswers[i])
                                 ? "ok"
                                 : "ng",
                             )}

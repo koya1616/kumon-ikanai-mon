@@ -191,6 +191,11 @@ export function parseClozeMarkers(statement: string): number[] {
   return out.sort((a, b) => a - b);
 }
 
+/** 穴埋め採点の1空欄分の比較: 前後空白を除いた完全一致。英字の大文字小文字は区別しない */
+export function isClozeAnswerEqual(input: string, correct: string): boolean {
+  return input.trim().toLowerCase() === correct.trim().toLowerCase();
+}
+
 /** マーカー検証: 1〜Nの連番ちょうどN個であること。NG時はメッセージ、OK時はnull */
 export function validateClozeMarkers(statement: string): string | null {
   const markers = parseClozeMarkers(statement);

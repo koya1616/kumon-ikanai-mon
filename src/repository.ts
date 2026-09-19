@@ -15,7 +15,7 @@ import type {
   ReviewAnswerResult,
   Topic,
 } from "./domain";
-import { QUESTIONS_PER_QUIZ, REVIEW_CLEAR_STREAK } from "./domain";
+import { QUESTIONS_PER_QUIZ, REVIEW_CLEAR_STREAK, isClozeAnswerEqual } from "./domain";
 
 /**
  * D1 アクセス層: SQL (snake_case) とドメイン (camelCase) の変換はここに集約。
@@ -274,9 +274,9 @@ async function loadClozeBlanks(
   return out;
 }
 
-/** exact_trim採点: 入力trim後の完全一致。不足分は空文字扱い */
+/** trim後の完全一致 (英字の大文字小文字は区別しない)。不足分は空文字扱い */
 function gradeCloze(inputs: string[], corrects: string[]): boolean[] {
-  return corrects.map((c, i) => (inputs[i] ?? "").trim() === c);
+  return corrects.map((c, i) => isClozeAnswerEqual(inputs[i] ?? "", c));
 }
 
 function toChoicesArray(q: NewQuestion): string[] {
