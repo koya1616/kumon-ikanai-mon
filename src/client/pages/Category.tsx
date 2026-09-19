@@ -201,11 +201,7 @@ const QuizRow = ({ quiz: q, onPlay }: { quiz: Quiz; onPlay: () => void }) => {
               </strong>
               <span>{sm.attemptCount}回</span>
             </div>
-          ) : (
-            <div className="quiz-row-right">
-              <span className="chip chip-moegi">▶ はじめる</span>
-            </div>
-          )
+          ) : null
         ) : (
           <div className="quiz-row-right">
             <span className="chip chip-yamabuki">

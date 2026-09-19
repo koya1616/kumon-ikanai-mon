@@ -1,8 +1,9 @@
-import { useEffect, useState } from "react";
-import { Link } from "react-router";
+import { useEffect, useMemo, useState } from "react";
+import { Link, useNavigate } from "react-router";
+import { QUESTIONS_PER_QUIZ } from "../api";
 import { categoryStats, useTree } from "../tree";
-import { EmptyState, Icon, Ring, Skeletons } from "../ui";
-import type { AttemptState, CategoryTreeNode } from "../api";
+import { EmptyState, Icon, Ring, Skeletons, Stars } from "../ui";
+import type { AttemptState, CategoryTreeNode, Quiz } from "../api";
 import { api } from "../api";
 import { clearResume, listResumes } from "../resume";
 
@@ -132,7 +133,7 @@ export const Home = () => {
           <>
             <ShortcutRow mistakeCount={mistakeCount} />
             {resumable.length > 0 && <ResumeSection resumable={resumable} />}
-            <CategoryGrid tree={tree} statsOf={statsOf} />
+            <HomeTabs tree={tree} statsOf={statsOf} />
           </>
         )}
       </div>
@@ -249,19 +250,233 @@ const ResumeCard = ({ p }: { p: ResumableItem }) => {
   );
 };
 
+/** ホームのタブ切り替え: カテゴリ一覧 / トピック一覧 / クイズ一覧。 */
+type HomeTab = "categories" | "topics" | "quizzes";
+
+const HomeTabs = ({
+  tree,
+  statsOf,
+}: {
+  tree: CategoryTreeNode[];
+  statsOf: (c: CategoryTreeNode) => {
+    total: number;
+    tried: number;
+    perfect: number;
+    mastery: number;
+  };
+}) => {
+  const [tab, setTab] = useState<HomeTab>("categories");
+  const [kw, setKw] = useState("");
+  const keyword = kw.trim();
+
+  const topics = useMemo(
+    () =>
+      tree.flatMap((c) =>
+        c.topics.map((t) => ({ ...t, categoryId: c.id, categoryTitle: c.title })),
+      ),
+    [tree],
+  );
+  const quizzes = useMemo(
+    () =>
+      tree.flatMap((c) =>
+        c.topics.flatMap((t) =>
+          t.quizzes.map((q) => ({
+            ...q,
+            categoryId: c.id,
+            categoryTitle: c.title,
+            topicId: t.id,
+            topicTitle: t.title,
+          })),
+        ),
+      ),
+    [tree],
+  );
+
+  const filteredTopics = keyword
+    ? topics.filter((t) => t.title.includes(keyword) || t.categoryTitle.includes(keyword))
+    : topics;
+  const filteredQuizzes = keyword
+    ? quizzes.filter(
+        (q) =>
+          q.title.includes(keyword) ||
+          q.topicTitle.includes(keyword) ||
+          q.categoryTitle.includes(keyword),
+      )
+    : quizzes;
+
+  return (
+    <section aria-label="一覧切り替え">
+      <div className="hx-tabs" role="tablist" aria-label="カテゴリ・トピック・クイズ">
+        {(
+          [
+            { id: "categories", label: `カテゴリ(${tree.length})` },
+            { id: "topics", label: `トピック(${topics.length})` },
+            { id: "quizzes", label: `クイズ(${quizzes.length})` },
+          ] as { id: HomeTab; label: string }[]
+        ).map((t) => (
+          <button
+            key={t.id}
+            type="button"
+            role="tab"
+            aria-selected={tab === t.id}
+            className="hx-tab"
+            onClick={() => setTab(t.id)}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+      {tab !== "categories" && (
+        <div className="toolbar" style={{ marginBottom: 12 }}>
+          <div className="search">
+            <Icon name="search" />
+            <input
+              type="search"
+              placeholder={tab === "topics" ? "トピック名で検索" : "クイズ名で検索"}
+              aria-label={tab === "topics" ? "トピックを検索" : "クイズを検索"}
+              value={kw}
+              onChange={(e) => setKw(e.target.value)}
+            />
+          </div>
+        </div>
+      )}
+      <div role="tabpanel">
+        {tab === "categories" && <CategoryGrid tree={tree} statsOf={statsOf} />}
+        {tab === "topics" && <TopicList topics={filteredTopics} />}
+        {tab === "quizzes" && <QuizList quizzes={filteredQuizzes} hasFilter={keyword !== ""} />}
+      </div>
+    </section>
+  );
+};
+
+type TopicWithCategory = {
+  id: number;
+  categoryId: number;
+  title: string;
+  categoryTitle: string;
+  quizzes: Quiz[];
+};
+
+/** フラットなトピック一覧。選択で所属カテゴリへ移動する。 */
+const TopicList = ({ topics }: { topics: TopicWithCategory[] }) => {
+  if (!topics.length) {
+    return (
+      <div className="card card-pad">
+        <EmptyState
+          glyph="無"
+          title="該当するトピックがありません"
+          sub="検索条件を変えてみてください。"
+        />
+      </div>
+    );
+  }
+  return (
+    <div className="cat-grid">
+      {topics.map((t) => (
+        <Link key={t.id} className="cat-card" to={`/c/${t.categoryId}`}>
+          <div className="cat-card-body">
+            <div className="muted">{t.categoryTitle}</div>
+            <div className="cat-card-title">{t.title}</div>
+            <div className="cat-card-meta">{t.quizzes.length}クイズ</div>
+          </div>
+          <Icon name="arrow" />
+        </Link>
+      ))}
+    </div>
+  );
+};
+
+type QuizWithPath = Quiz & { categoryTitle: string; topicTitle: string };
+
+/** フラットなクイズ一覧。Category の行表示を再利用する。 */
+const QuizList = ({ quizzes, hasFilter }: { quizzes: QuizWithPath[]; hasFilter: boolean }) => {
+  const navigate = useNavigate();
+  if (!quizzes.length) {
+    return (
+      <div className="card card-pad">
+        <EmptyState
+          glyph="無"
+          title="該当するクイズがありません"
+          sub={
+            hasFilter ? "検索条件を変えてみてください。" : "管理画面でクイズを追加してください。"
+          }
+        />
+      </div>
+    );
+  }
+  return (
+    <div className="quiz-list">
+      {quizzes.map((q) => (
+        <HomeQuizRow key={q.id} quiz={q} onPlay={() => navigate(`/play/${q.id}`)} />
+      ))}
+    </div>
+  );
+};
+
+const HomeQuizRow = ({ quiz: q, onPlay }: { quiz: QuizWithPath; onPlay: () => void }) => {
+  const { summary } = useTree();
+  const sm = summary[q.id];
+  const readyQ = q.questionCount >= QUESTIONS_PER_QUIZ;
+  const perfect = !!sm?.attemptCount && sm.bestScore >= sm.bestTotal && sm.bestTotal > 0;
+  const markCls = "quiz-mark" + (perfect ? " is-perfect" : sm?.attemptCount ? " is-tried" : "");
+  return (
+    <div className="quiz-row-wrap">
+      <button
+        type="button"
+        className="quiz-row quiz-row-main"
+        disabled={!readyQ}
+        title={readyQ ? "" : "問題が10問そろっていません"}
+        onClick={onPlay}
+        aria-label={`${q.title}に挑戦する`}
+      >
+        <div className={markCls} aria-hidden="true">
+          {perfect ? "優" : sm?.attemptCount ? "再" : "未"}
+        </div>
+        <div className="grow">
+          <div className="quiz-row-title">{q.title}</div>
+          <div className="quiz-row-meta">
+            <span>
+              {q.categoryTitle} › {q.topicTitle}
+            </span>
+            <Stars n={q.difficulty} />
+          </div>
+        </div>
+        {readyQ ? (
+          sm?.attemptCount ? (
+            <div className="quiz-row-right">
+              <strong>
+                {sm.bestScore}/{sm.bestTotal}
+              </strong>
+              <span>{sm.attemptCount}回</span>
+            </div>
+          ) : null
+        ) : (
+          <div className="quiz-row-right">
+            <span className="chip chip-yamabuki">
+              準備中 {q.questionCount}/{QUESTIONS_PER_QUIZ}
+            </span>
+          </div>
+        )}
+      </button>
+    </div>
+  );
+};
+
 /** 主役: カテゴリ選択グリッド。 */
 const CategoryGrid = ({
   tree,
   statsOf,
 }: {
   tree: CategoryTreeNode[];
-  statsOf: (c: CategoryTreeNode) => { total: number; tried: number; perfect: number; mastery: number };
+  statsOf: (c: CategoryTreeNode) => {
+    total: number;
+    tried: number;
+    perfect: number;
+    mastery: number;
+  };
 }) => {
   return (
     <section aria-label="カテゴリ">
-      <div className="section-head">
-        <h2 className="title-md">カテゴリ</h2>
-      </div>
       <div className="cat-grid">
         {tree.map((c) => {
           const s = statsOf(c);
@@ -286,4 +501,3 @@ const CategoryGrid = ({
     </section>
   );
 };
-
