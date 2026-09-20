@@ -31,9 +31,28 @@ const InlineParts = ({
       {parts.map((part, i) => {
         if (!part) return null;
         if (part.length >= 2 && part.charAt(0) === "`" && part.charAt(part.length - 1) === "`") {
+          const inner = part.slice(1, -1);
+          // inlineコード内の {{n}} も空欄として扱う
+          // （例: `--network {{4}}`）。renderBlank未指定時は従来通りcode表示のみ。
+          if (renderBlank && /\{\{\d+\}\}/.test(inner)) {
+            let c = 0;
+            return (
+              <span key={i}>
+                {splitClozeParts(inner).map((seg) =>
+                  "blank" in seg ? (
+                    <span key={c++}>{renderBlank(seg.blank)}</span>
+                  ) : seg.text ? (
+                    <code key={c++} className="inline-code">
+                      {seg.text}
+                    </code>
+                  ) : null,
+                )}
+              </span>
+            );
+          }
           return (
             <code key={i} className="inline-code">
-              {part.slice(1, -1)}
+              {inner}
             </code>
           );
         }

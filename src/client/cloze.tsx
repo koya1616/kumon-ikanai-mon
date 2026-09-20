@@ -1,5 +1,6 @@
 // 穴埋め描画 (statement中の {{n}} を入力欄・表示欄に置換)。
-// RichText の renderBlank 差し込み口を使い、コードブロック内は置換しない。
+// RichText の renderBlank 差し込み口を使い、フェンスコードブロック内は置換しない
+// （inlineコード内は置換する）。
 // XSS-safe (テキストノード組み立てのみ)。
 import { useRef } from "react";
 import type { KeyboardEvent } from "react";
