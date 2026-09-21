@@ -4,8 +4,8 @@ import { api } from "../api";
 import { categoryStats, useTree } from "../tree";
 import { EmptyState, Icon, Ring, Skeletons } from "../ui";
 import { DifficultyFilter, QuizRow } from "../components/QuizRow";
-import type { AttemptState, CategoryTreeNode, Quiz } from "../api";
-import { clearResume, listResumes } from "../resume";
+import type { AttemptState, CategoryTreeNode, InProgressAttempt, Quiz } from "../api";
+import { clearLegacyResumes, displayOrder } from "../resume";
 
 interface InProgress {
   quizId: number;
@@ -33,43 +33,65 @@ const useMistakeCount = (): number | null => {
   return mistakeCount;
 };
 
-// 回答途中のクイズ: このブラウザの localStorage (kmon:resume:*) を列挙し、
-// サーバ状態で未完了かつ 1問以上回答ずみ・全問未満のものだけ残す。
-// Play の再開判定 (answers 0件は新規扱い) と合わせる。
+// 回答途中のクイズ: サーバの未完了attempt一覧 (GET /api/attempts/in-progress) を使う。
+// 端末・ブラウザに依存しない。クイズごとに最新の1件だけ残す。
+// 旧ランダム順のデータは決定的順序と prefix が合わないため除外する (移行期の互換措置)。
 const useResumable = (tree: CategoryTreeNode[] | null): InProgress[] | null => {
   const [inProgress, setInProgress] = useState<InProgress[] | null>(null);
   useEffect(() => {
     if (!tree) return;
     let alive = true;
-    const saved = listResumes();
-    if (!saved.length) {
-      setInProgress([]);
-      return;
-    }
-    void Promise.all(
-      saved.map(async (r): Promise<InProgress | null> => {
-        try {
-          const st = await api<AttemptState>(`/api/attempts/${r.attemptId}`);
-          if (
-            !st ||
-            st.completedAt ||
-            st.quizId !== r.quizId ||
-            !st.questions?.length ||
-            st.questions.length !== r.order.length
-          ) {
-            if (st?.completedAt) clearResume(r.quizId);
-            return null;
+    // 旧 localStorage データは無視して掃除する
+    clearLegacyResumes();
+    api<{ items: InProgressAttempt[] }>("/api/attempts/in-progress?limit=50")
+      .then((d) => {
+        const latest = new Map<number, InProgressAttempt>();
+        for (const r of d.items ?? []) {
+          if (!r || typeof r.quizId !== "number" || typeof r.attemptId !== "number") continue;
+          if (!Number.isInteger(r.quizId) || !Number.isInteger(r.attemptId)) continue;
+          const done = Number(r.done);
+          const total = Number(r.total);
+          if (!Number.isInteger(done) || !Number.isInteger(total) || total <= 0) continue;
+          if (done < 1 || done >= total) continue;
+          // 新しい順で来るため、先勝ち=クイズごとの最新
+          if (!latest.has(r.quizId)) {
+            latest.set(r.quizId, { ...r, done, total });
           }
-          const done = st.answers?.length ?? 0;
-          if (done < 1 || done >= st.questions.length) return null;
-          return { quizId: r.quizId, attemptId: r.attemptId, done, total: st.questions.length };
-        } catch {
-          return null;
         }
-      }),
-    ).then((rows) => {
-      if (alive) setInProgress(rows.filter((r): r is InProgress => r !== null));
-    });
+        if (!latest.size) return [] as InProgress[];
+        // Play の再開判定と合わせ、決定的順序の prefix に回答が載っているものだけ残す
+        return Promise.all(
+          [...latest.values()].map(async (r): Promise<InProgress | null> => {
+            try {
+              const st = await api<AttemptState>(`/api/attempts/${r.attemptId}`);
+              if (
+                !st ||
+                st.completedAt ||
+                st.quizId !== r.quizId ||
+                !st.questions?.length ||
+                (st.answers?.length ?? 0) !== r.done ||
+                st.questions.length !== r.total
+              ) {
+                return null;
+              }
+              const ordered = displayOrder(st.questions, st.attemptId);
+              const answered = new Set(st.answers.map((a) => a.attemptQuestionId));
+              for (let i = 0; i < st.answers.length; i++) {
+                if (!answered.has(ordered[i]!.attemptQuestionId as number)) return null;
+              }
+              return { quizId: r.quizId, attemptId: r.attemptId, done: r.done, total: r.total };
+            } catch {
+              return null;
+            }
+          }),
+        ).then((rows) => rows.filter((r): r is InProgress => r !== null));
+      })
+      .then((rows) => {
+        if (alive) setInProgress(rows ?? []);
+      })
+      .catch(() => {
+        if (alive) setInProgress([]);
+      });
     return () => {
       alive = false;
     };

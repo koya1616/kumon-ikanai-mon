@@ -1537,6 +1537,54 @@ export async function listAttemptSummaries(db: DB): Promise<AttemptSummary[]> {
   return results;
 }
 
+/** 回答途中の挑戦 (未完了かつ1問以上回答ずみ・全問未満)。端末非依存の「つづきから」用 */
+export interface InProgressAttempt {
+  attemptId: number;
+  quizId: number;
+  done: number;
+  total: number;
+  lastAnsweredAt: string | null;
+}
+
+export async function listInProgressAttempts(
+  db: DB,
+  limit: number,
+  quizId?: number,
+): Promise<InProgressAttempt[]> {
+  const where =
+    quizId === undefined ? "a.completed_at IS NULL" : "a.completed_at IS NULL AND a.quiz_id = ?";
+  const { results } = await db
+    .prepare(
+      `SELECT a.id AS "attemptId", a.quiz_id AS "quizId",
+        COUNT(aq.id) AS "total",
+        COUNT(aa.attempt_question_id) AS "done",
+        MAX(aa.created_at) AS "lastAnsweredAt"
+       FROM attempts a
+       JOIN attempt_questions aq ON aq.attempt_id = a.id
+       LEFT JOIN attempt_answers aa ON aa.attempt_question_id = aq.id
+        WHERE ${where}
+        GROUP BY a.id
+        HAVING COUNT(aa.attempt_question_id) >= 1
+          AND COUNT(aa.attempt_question_id) < COUNT(aq.id)
+        ORDER BY a.id DESC LIMIT ?`,
+    )
+    .bind(...(quizId === undefined ? [limit] : [quizId, limit]))
+    .all<{
+      attemptId: number;
+      quizId: number;
+      done: number;
+      total: number;
+      lastAnsweredAt: string | null;
+    }>();
+  return results.map((r) => ({
+    attemptId: Number(r.attemptId),
+    quizId: Number(r.quizId),
+    done: Number(r.done),
+    total: Number(r.total),
+    lastAnsweredAt: r.lastAnsweredAt,
+  }));
+}
+
 /** クイズ横断の完了履歴 (新しい順)。パンくず付きで返す */
 export interface RecentAttempt extends Attempt {
   quizTitle: string;

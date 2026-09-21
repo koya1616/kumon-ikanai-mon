@@ -1,19 +1,11 @@
 import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router";
 import { api, isCloze, isOrder } from "../api";
-import type { AnswerResult, AttemptState, PlayQuestion, QuizMeta } from "../api";
+import type { AnswerResult, AttemptState, InProgressAttempt, PlayQuestion, QuizMeta } from "../api";
 import { ClozeAnswerList, ClozeFieldList, ClozeStatement, parseClozeBlanks } from "../cloze";
 import { OrderAnswerList, OrderBlocks } from "../order";
 import { useDialog, useDialogOpen } from "../dialog";
-import {
-  applyChoiceOrder,
-  clearResume,
-  readResume,
-  shuffle,
-  toDisplayedPos,
-  toOriginalPos,
-  writeResume,
-} from "../resume";
+import { displayOrder, toDisplayedPos, toOriginalPos } from "../resume";
 import { RichText } from "../rich";
 import { usePlaySession } from "../session";
 import type { PlaySession } from "../session";
@@ -69,18 +61,14 @@ export const Play = () => {
         }),
         loadTree(),
       ]);
-      const shuffled = shuffle(started.questions ?? []);
-      writeResume(
-        quizId,
-        started.attemptId,
-        shuffled.map((q) => q.attemptQuestionId as number),
-      );
+      // 表示順は attemptId 決定的シャッフル。どの端末から開いても同じ並びになる
+      const ordered = displayOrder(started.questions ?? [], started.attemptId);
       setPhase({
         name: "playing",
         play: {
           attemptId: started.attemptId,
           quiz,
-          questions: shuffled,
+          questions: ordered,
           index: 0,
           answers: [],
           busy: false,
@@ -126,66 +114,53 @@ export const Play = () => {
         });
         toast("前回のつづきから再開しました", "");
       } catch {
-        clearResume(quizId);
         await startNew();
       }
     },
     [quizId, loadTree, startNew, toast],
   );
 
-  // 開始判定: 未完了の自分の挑戦が残っていれば「つづき/はじめ」を選ばせる。
-  // 順序不明・不整合の場合は安全側で新規開始する。
+  // 開始判定: このクイズの未完了挑戦 (サーバ) が残っていれば「つづき/はじめ」を選ばせる。
+  // 表示順は attemptId 決定的シャッフルで復元する。旧ランダム順のデータは prefix が
+  // 合わないため新規開始する (移行期の互換措置)。
   useEffect(() => {
     if (initializedRef.current === quizId) return;
     initializedRef.current = quizId;
     let alive = true;
-    const saved = readResume(quizId);
-    if (!saved) {
-      void startNew();
-      return () => {
-        alive = false;
-      };
-    }
-    api<AttemptState>(`/api/attempts/${saved.attemptId}`)
-      .then((st) => {
-        if (!alive) return;
-        if (
-          !st ||
-          st.completedAt ||
-          st.quizId !== quizId ||
-          !st.questions ||
-          st.questions.length !== saved.order.length ||
-          !st.answers ||
-          !st.answers.length ||
-          st.answers.length >= st.questions.length
-        ) {
-          if (st?.completedAt) clearResume(quizId);
-          void startNew();
+    api<{ items: InProgressAttempt[] }>(`/api/attempts/in-progress?quizId=${quizId}&limit=10`)
+      .then((list) => {
+        const latest = (list.items ?? [])
+          .filter((r) => r?.quizId === quizId)
+          .sort((a, b) => b.attemptId - a.attemptId)[0];
+        if (!latest) {
+          if (alive) void startNew();
           return;
         }
-        const byId: Record<number, PlayQuestion> = {};
-        for (const q of st.questions) byId[q.attemptQuestionId as number] = q;
-        const ordered = saved.order.map((oid) => {
-          const orig = byId[oid];
-          if (!orig) return undefined;
-          return applyChoiceOrder(orig, saved.choiceOrders?.[oid]);
-        });
-        if (ordered.some((q) => !q)) {
-          clearResume(quizId);
-          void startNew();
-          return;
-        }
-        const ansById: ResumeChoice["ansById"] = {};
-        for (const a of st.answers) ansById[a.attemptQuestionId] = a;
-        // 回答は表示順の prefix のはず。崩れていたら新規開始する。
-        for (let i = 0; i < st.answers.length; i++) {
-          if (!ansById[(ordered[i] as PlayQuestion).attemptQuestionId as number]) {
-            clearResume(quizId);
+        return api<AttemptState>(`/api/attempts/${latest.attemptId}`).then((st) => {
+          if (!alive) return;
+          if (
+            !st ||
+            st.completedAt ||
+            st.quizId !== quizId ||
+            !st.questions?.length ||
+            !st.answers?.length ||
+            st.answers.length >= st.questions.length
+          ) {
             void startNew();
             return;
           }
-        }
-        setPhase({ name: "resume", choice: { st, ordered: ordered as PlayQuestion[], ansById } });
+          const ordered = displayOrder(st.questions, st.attemptId);
+          const ansById: ResumeChoice["ansById"] = {};
+          for (const a of st.answers) ansById[a.attemptQuestionId] = a;
+          // 回答は表示順の prefix のはず。崩れていたら (旧順序データ等) 新規開始する。
+          for (let i = 0; i < st.answers.length; i++) {
+            if (!ansById[(ordered[i] as PlayQuestion).attemptQuestionId as number]) {
+              void startNew();
+              return;
+            }
+          }
+          setPhase({ name: "resume", choice: { st, ordered, ansById } });
+        });
       })
       .catch(() => {
         if (alive) void startNew();
@@ -452,7 +427,8 @@ const PlayingScreen = ({ play, onChange }: { play: LivePlay; onChange: (p: LiveP
   const quit = useCallback(() => {
     dialog({
       title: "途中でやめますか？",
-      message: "ここまでの回答は記録されます。このブラウザからは次回つづきから再開できます。",
+      message:
+        "ここまでの回答は記録されます。ホームの「つづきから」でどの端末からでも再開できます。",
       okLabel: "やめる",
       danger: true,
     }).then((yes) => {

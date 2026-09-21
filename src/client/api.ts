@@ -137,6 +137,15 @@ export interface AttemptState {
   answers: AttemptStateAnswer[];
 }
 
+/** GET /api/attempts/in-progress の1件 (端末非依存の「つづきから」用) */
+export interface InProgressAttempt {
+  attemptId: number;
+  quizId: number;
+  done: number;
+  total: number;
+  lastAnsweredAt: string | null;
+}
+
 export interface AttemptRecord {
   id: number;
   quizId: number;

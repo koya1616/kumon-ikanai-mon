@@ -628,6 +628,26 @@ async function route(req: Request, env: Env): Promise<Response> {
     return json(await repo.listRecentAttempts(db, limit));
   }
 
+  // 回答途中の挑戦一覧 (端末非依存の「つづきから」用。未完了かつ1問以上・全問未満)。
+  // "/api/attempts/:id" より先に評価すること (:id に吸われないように)。
+  if (path === "/api/attempts/in-progress" && method === "GET") {
+    const v = validated(
+      z
+        .object({
+          quizId: idParamSchema.optional(),
+          limit: z.coerce.number().int().optional(),
+        })
+        .safeParse({
+          quizId: url.searchParams.get("quizId") ?? undefined,
+          limit: url.searchParams.get("limit") ?? undefined,
+        }),
+    );
+    if ("res" in v) return v.res;
+    const rawLimit = v.data.limit ?? 50;
+    const limit = Math.min(Math.max(rawLimit, 1), 100);
+    return json({ items: await repo.listInProgressAttempts(db, limit, v.data.quizId) });
+  }
+
   // 苦手一括復習 (練習扱い・attempts系と完全分離。ベスト・サマリーに影響しない)。
   // GET: 直近REVIEW_CLEAR_STREAK件が全正解のものは解消扱いで除外して返す。
   if (path === "/api/review/mistakes" && method === "GET") {

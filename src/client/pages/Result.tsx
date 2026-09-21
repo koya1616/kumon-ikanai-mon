@@ -2,7 +2,6 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router";
 import { api, isCloze, isOrder } from "../api";
 import type { AttemptRecord } from "../api";
-import { clearResume } from "../resume";
 import { ClozeAnswerList, ClozeFieldList, ClozeStatement } from "../cloze";
 import { OrderAnswerList, OrderBlocks } from "../order";
 import { RichText } from "../rich";
@@ -61,7 +60,6 @@ export const Result = () => {
       method: "POST",
     })
       .then((done) => {
-        clearResume(ses.quiz.id);
         return done;
       })
       .catch(() => ({ score: ses.score, total }))
