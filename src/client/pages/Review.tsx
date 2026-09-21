@@ -23,8 +23,10 @@ const REVIEW_LIMIT = 30;
 export const Review = () => {
   const navigate = useNavigate();
   // ?quiz=ID で1クイズの苦手だけに絞る (履歴ページからの導線)
+  // ?random=1 で全体からランダムに一問だけ出題する (Homeの「ランダム一問」導線用・練習扱い)
   const [params] = useSearchParams();
   const quizFilter = Number(params.get("quiz")) || null;
+  const isRandom = params.get("random") === "1";
   const [state, setState] = useState<LoadState>({ name: "loading" });
   const dialogOpen = useDialogOpen();
   const nextRef = useRef<HTMLButtonElement>(null);
@@ -47,8 +49,39 @@ export const Review = () => {
       : `${Date.now()}-${Math.random().toString(36).slice(2)}`,
   );
   const [serverInfo, setServerInfo] = useState<Record<number, ReviewAnswerResult>>({});
+  const [randomBusy, setRandomBusy] = useState(false);
+
+  const resetAnswers = useCallback(() => {
+    setPos(0);
+    setPicks({});
+    setClozeInputs({});
+    setClozeResults({});
+    setOrderInputs({});
+    setOrderResults({});
+    setServerInfo({});
+    setCollapsedFor(null);
+  }, []);
+
+  const loadRandom = useCallback(async () => {
+    setRandomBusy(true);
+    try {
+      const d = await api<{ item: MistakeItem }>(`/api/random/question`);
+      setState({ name: "ready", items: d.item ? [d.item] : [] });
+      setOrder(d.item ? [d.item] : []);
+      resetAnswers();
+      window.scrollTo(0, 0);
+    } catch (e) {
+      setState({ name: "error", message: (e as Error).message });
+    } finally {
+      setRandomBusy(false);
+    }
+  }, [resetAnswers]);
 
   useEffect(() => {
+    if (isRandom) {
+      void loadRandom();
+      return;
+    }
     let alive = true;
     api<{ items: MistakeItem[] }>(
       `/api/review/mistakes?limit=${REVIEW_LIMIT}${quizFilter ? `&quizId=${quizFilter}` : ""}`,
@@ -67,7 +100,7 @@ export const Review = () => {
     return () => {
       alive = false;
     };
-  }, [quizFilter]);
+  }, [quizFilter, isRandom, loadRandom]);
 
   const reshuffle = useCallback(() => {
     if (state.name !== "ready") return;
@@ -114,7 +147,8 @@ export const Review = () => {
   }, [picks, clozeResults, orderResults, order]);
 
   const remaining = order.length - doneCount;
-  const finished = order.length > 0 && revealed && doneCount >= order.length;
+  // ランダム一問は1問完結の無限ループとし、まとめ画面には遷移しない (解説シートで「もう一問」へ進む)
+  const finished = !isRandom && order.length > 0 && revealed && doneCount >= order.length;
 
   const pick = useCallback(
     (n: number) => {
@@ -179,11 +213,15 @@ export const Review = () => {
 
   const next = useCallback(() => {
     if (!revealed) return;
+    if (isRandom) {
+      if (!randomBusy) void loadRandom();
+      return;
+    }
     if (pos + 1 < order.length) {
       setPos((p) => p + 1);
       window.scrollTo(0, 0);
     }
-  }, [revealed, pos, order.length]);
+  }, [revealed, pos, order.length, isRandom, randomBusy, loadRandom]);
 
   useEffect(() => {
     if (revealed) nextRef.current?.focus({ preventScroll: true });
@@ -232,7 +270,11 @@ export const Review = () => {
       <div className="screen">
         <div className="hist-body">
           <div className="card card-pad">
-            <EmptyState glyph="！" title="苦手を取得できません" sub={state.message} />
+            <EmptyState
+              glyph="！"
+              title={isRandom ? "ランダム一問を取得できません" : "苦手を取得できません"}
+              sub={state.message}
+            />
           </div>
           <div className="actions actions-center">
             <button type="button" className="btn" onClick={() => navigate(-1)}>
@@ -245,6 +287,33 @@ export const Review = () => {
   }
 
   if (!state.items.length) {
+    if (isRandom) {
+      return (
+        <div className="screen">
+          <div className="hist-band">
+            <div className="hist-band-inner">
+              <Crumbs items={[{ label: "ホーム", href: "/" }, { label: "ランダム一問" }]} />
+              <h1 className="title-lg">ランダム一問</h1>
+              <p className="muted">練習モード · 成績には残りません</p>
+            </div>
+          </div>
+          <div className="hist-body">
+            <div className="card card-pad">
+              <EmptyState
+                glyph="無"
+                title="まだ問題がありません"
+                sub="管理画面でクイズを公開すると、ここにランダムで1問出題されます。"
+              />
+            </div>
+            <div className="actions actions-center">
+              <Link className="btn btn-primary" to="/">
+                ホームへ戻る
+              </Link>
+            </div>
+          </div>
+        </div>
+      );
+    }
     return (
       <div className="screen">
         <div className="hist-band">
@@ -362,7 +431,9 @@ export const Review = () => {
           </div>
           <div className="drill-card">
             <div className="section-head">
-              <h1 className="title-md">苦手だけ復習 · 残り{remaining}問</h1>
+              <h1 className="title-md">
+                {isRandom ? "ランダム一問" : `苦手だけ復習 · 残り${remaining}問`}
+              </h1>
               <div className="row">
                 <BookmarkButton questionId={target.questionId} />
                 <button
@@ -529,7 +600,9 @@ export const Review = () => {
                 </span>
                 <span>
                   {isOk
-                    ? "正解！よく直せたね"
+                    ? isRandom
+                      ? "正解！"
+                      : "正解！よく直せたね"
                     : targetCloze
                       ? "不正解…"
                       : targetOrder
@@ -575,8 +648,15 @@ export const Review = () => {
                   type="button"
                   className={`btn ${pos + 1 >= order.length ? "btn-primary" : "btn-ink"}`}
                   onClick={next}
+                  disabled={isRandom && randomBusy}
                 >
-                  {pos + 1 >= order.length ? "結果を見る" : "次の問題 →"}
+                  {isRandom
+                    ? randomBusy
+                      ? "出題中…"
+                      : "もう一問 →"
+                    : pos + 1 >= order.length
+                      ? "結果を見る"
+                      : "次の問題 →"}
                 </button>
               </div>
             </div>

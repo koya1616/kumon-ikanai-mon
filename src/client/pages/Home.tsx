@@ -193,11 +193,29 @@ const BookmarkShortcut = () => (
   </Link>
 );
 
+const RandomShortcut = () => (
+  <Link
+    className="shortcut-card"
+    to="/review?random=1"
+    aria-label="ランダムに一問だけ回答する（練習・成績に残りません）"
+  >
+    <span className="shortcut-glyph" aria-hidden="true">
+      １
+    </span>
+    <span className="grow">
+      <span className="shortcut-title">ランダム一問</span>
+      <span className="muted">全体から1問だけ・成績に残りません</span>
+    </span>
+    <Icon name="arrow" />
+  </Link>
+);
+
 const ShortcutRow = ({ mistakeCount }: { mistakeCount: number | null }) => {
   if (mistakeCount !== null && mistakeCount <= 0) {
     return (
       <section className="home-shortcuts" aria-label="自習ショートカット">
         <div className="shortcut-grid">
+          <RandomShortcut />
           <BookmarkShortcut />
           <HistoryShortcut />
         </div>
@@ -226,6 +244,7 @@ const ShortcutRow = ({ mistakeCount }: { mistakeCount: number | null }) => {
           </span>
           <Icon name="arrow" />
         </Link>
+        <RandomShortcut />
         <BookmarkShortcut />
         <HistoryShortcut />
       </div>

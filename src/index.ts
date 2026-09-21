@@ -673,6 +673,14 @@ async function route(req: Request, env: Env): Promise<Response> {
     return json({ items: await repo.listMistakes(db, v.data) });
   }
 
+  // ランダム一問 (全体から1問だけ・練習扱い。回答は既存 POST /api/review/answers を使う)。
+  // published のクイズの current_version から ORDER BY RANDOM() で1件返す。
+  if (path === "/api/random/question" && method === "GET") {
+    const item = await repo.getRandomQuestion(db);
+    if (!item) return json({ error: "問題がありません" }, 404);
+    return json({ item });
+  }
+
   // 復習回答の記録 (練習扱い・サーバ側で採点。attempts系に影響しない)。
   if (path === "/api/review/answers" && method === "POST") {
     const body = await readJson(req);

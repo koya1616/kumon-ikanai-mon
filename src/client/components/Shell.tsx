@@ -1,15 +1,17 @@
 // アプリのシェル (ヘッダ / サイド / タブバー) を宣言的 TSX で描画する。
 import { useEffect } from "react";
 import type { ReactNode } from "react";
-import { NavLink, useLocation } from "react-router";
+import { Link, NavLink, useLocation } from "react-router";
 import { Icon } from "../ui";
 
-type Section = "home" | "admin" | "history" | "review" | "bookmarks";
+type Section = "home" | "admin" | "history" | "review" | "random" | "bookmarks";
 
-/** パスから所属セクションを決める。ShellSync の判定と同等。 */
-export const sectionFor = (pathname: string): Section => {
+/** パス+クエリから所属セクションを決める。?random=1 は review と分離する。 */
+export const sectionFor = (pathname: string, search = ""): Section => {
   if (pathname.startsWith("/admin")) return "admin";
-  if (pathname.startsWith("/review")) return "review";
+  if (pathname.startsWith("/review")) {
+    return new URLSearchParams(search).get("random") === "1" ? "random" : "review";
+  }
   if (pathname.startsWith("/bookmarks")) return "bookmarks";
   if (pathname.startsWith("/history") || pathname.startsWith("/h/")) return "history";
   return "home";
@@ -38,13 +40,14 @@ const SIDE_LINKS: { to: string; section: Section; label: string }[] = [
   { to: "/", section: "home", label: "ホーム" },
   { to: "/history", section: "history", label: "履歴" },
   { to: "/review", section: "review", label: "苦手復習" },
+  { to: "/review?random=1", section: "random", label: "ランダム一問" },
   { to: "/bookmarks", section: "bookmarks", label: "ブックマーク" },
   { to: "/admin", section: "admin", label: "管理" },
 ];
 
 export const Shell = ({ children }: { children: ReactNode }) => {
-  const { pathname } = useLocation();
-  const section = sectionFor(pathname);
+  const { pathname, search } = useLocation();
+  const section = sectionFor(pathname, search);
   useScrollTopOnNavigate(pathname);
 
   return (
@@ -70,14 +73,14 @@ export const Shell = ({ children }: { children: ReactNode }) => {
         <aside className="side" aria-label="サイド">
           <nav className="side-nav" aria-label="サイド">
             {SIDE_LINKS.map((l) => (
-              <NavLink
+              <Link
                 key={l.to + l.label}
                 className="side-link"
                 to={l.to}
                 aria-current={section === l.section ? "page" : undefined}
               >
                 {l.label}
-              </NavLink>
+              </Link>
             ))}
           </nav>
         </aside>

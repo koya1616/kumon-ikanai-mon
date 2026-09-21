@@ -1997,6 +1997,90 @@ export async function listMistakes(
   });
 }
 
+// ---------- Random (全体から1問だけ: 練習扱い・attempts系に影響しない) ----------
+
+/**
+ * 全体ランダムで1問だけ取得する (絞り込みなし)。
+ * published のクイズの current_version スナップショットを返す。
+ * 返却形は MistakeItem と同形 (mistakeCount=0, lastWrongAt=null) にし、
+ * クライアントの復習単問UIをそのまま流用できるようにする。
+ * 回答の記録・採点は既存 POST /api/review/answers を使うためここでは行わない。
+ */
+export async function getRandomQuestion(db: DB): Promise<MistakeItem | null> {
+  const row = await db
+    .prepare(
+      `SELECT q.id AS "questionId",
+        q.current_version_id AS "questionVersionId",
+        qz.id AS "quizId", qz.title AS "quizTitle",
+        t.title AS "topicTitle",
+        c.id AS "categoryId", c.title AS "categoryTitle",
+        cv.question_type AS "questionType",
+        cv.statement AS "statement", cv.explanation AS "explanation"
+       FROM questions q
+       JOIN quizzes qz ON qz.id = q.quiz_id
+       JOIN topics t ON t.id = qz.topic_id
+       JOIN categories c ON c.id = t.category_id
+       JOIN question_versions cv ON cv.id = q.current_version_id
+       WHERE qz.status = 'published' AND q.current_version_id IS NOT NULL
+       ORDER BY RANDOM() LIMIT 1`,
+    )
+    .first<{
+      questionId: number;
+      questionVersionId: number;
+      quizId: number;
+      quizTitle: string;
+      topicTitle: string;
+      categoryId: number;
+      categoryTitle: string;
+      questionType: QuestionType;
+      statement: string;
+      explanation: string | null;
+    }>();
+  if (!row) return null;
+  const versionId = Number(row.questionVersionId);
+  const { results: choiceRows } = await db
+    .prepare(
+      `SELECT position, choice_text AS "text", is_correct AS "isCorrect"
+       FROM question_choices WHERE question_version_id = ? ORDER BY position`,
+    )
+    .bind(versionId)
+    .all<{ position: number; text: string; isCorrect: number }>();
+  const choices: string[] = [];
+  let answer = 1;
+  for (const ch of choiceRows) {
+    choices[Number(ch.position) - 1] = ch.text;
+    if (Number(ch.isCorrect) === 1) answer = Number(ch.position);
+  }
+  const isCloze = row.questionType === "cloze_text";
+  const isOrder = row.questionType === "order_blocks";
+  const clozeBlanks = isCloze
+    ? ((await loadClozeBlanks(db, [versionId])).get(versionId) ?? [])
+    : [];
+  const correctOrder = isOrder
+    ? ((await loadOrderItems(db, [versionId])).get(versionId) ?? [])
+    : [];
+  return {
+    questionId: Number(row.questionId),
+    questionVersionId: versionId,
+    quizId: Number(row.quizId),
+    quizTitle: row.quizTitle,
+    topicTitle: row.topicTitle,
+    categoryId: Number(row.categoryId),
+    categoryTitle: row.categoryTitle,
+    questionType: row.questionType,
+    statement: row.statement,
+    choices: isCloze || isOrder ? [] : choices,
+    answer: isCloze || isOrder ? 0 : answer,
+    correctAnswers: clozeBlanks.map((b) => b.answer),
+    // 出題時はシャッフル表示 (正順漏洩防止)。採点はサーバ側で正順と照合する。
+    items: isOrder ? seededShuffle(correctOrder, 0) : [],
+    correctOrder,
+    explanation: row.explanation ?? "",
+    mistakeCount: 0,
+    lastWrongAt: null,
+  };
+}
+
 // ---------- Bookmark (1問保存: 解答履歴と分離。成績・集計に影響しない) ----------
 
 /** ブックマーク追加 (冪等: 既存は無視)。存在しない問題は 404 用エラーを投げる */
