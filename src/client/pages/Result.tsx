@@ -10,10 +10,10 @@ import { usePlaySession } from "../session";
 import type { SessionAnswer } from "../session";
 import { BookmarkButton } from "../bookmark";
 import { Crumbs, fmtDate, Ring, Stars } from "../ui";
+import { messageOf, toneOf } from "../lib/display";
+import { toDisplayStatement } from "../components/quiz-ui";
 import { useTree } from "../tree";
 import { isClozeAnswerEqual, isOrderItemEqual } from "../../domain";
-
-type Tone = "is-full" | "is-good" | "is-mid" | "is-bad";
 
 interface DrillState {
   order: number[];
@@ -21,22 +21,6 @@ interface DrillState {
   picks: Record<number, number>;
   doneCount: number;
 }
-
-const toneOf = (score: number, total: number): Tone => {
-  if (total > 0 && score === total) return "is-full";
-  const pct = total ? score / total : 0;
-  if (pct >= 0.7) return "is-good";
-  if (pct >= 0.4) return "is-mid";
-  return "is-bad";
-};
-
-const messageOf = (score: number, total: number): string => {
-  if (total > 0 && score === total) return "全問正解！すばらしい！";
-  const pct = total ? score / total : 0;
-  if (pct >= 0.7) return "よくできました！";
-  if (pct >= 0.4) return "もう少し！見直して定着させよう";
-  return "ここからが本番。見直して再挑戦！";
-};
 
 export const Result = () => {
   const navigate = useNavigate();
@@ -317,13 +301,7 @@ const ReviewCard = ({
         <span className="grow">
           <span>第{i + 1}問　</span>
           <span className="review-statement rich">
-            <RichText
-              text={
-                isCloze(a.q.questionType)
-                  ? a.q.statement.replace(/\{\{(\d+)\}\}/g, "［空欄$1］")
-                  : a.q.statement
-              }
-            />
+            <RichText text={toDisplayStatement(a.q.statement, a.q.questionType)} />
           </span>
           <span className={`review-judge ${a.ok ? "is-ok" : "is-ng"}`}>
             {a.ok ? "できた" : "見直し"}

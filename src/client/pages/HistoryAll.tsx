@@ -1,10 +1,13 @@
 // クイズ横断の挑戦履歴ページ (/history)。完了した挑戦を新しい順に並べる。
 // 問題単位の掘り下げはクイズ別履歴 (/h/:id) に寄せ、ここでは回遊用の目次に徹する。
 import { useEffect, useMemo, useState } from "react";
-import { Link, useNavigate } from "react-router";
+import { Link } from "react-router";
 import { api, fmtDuration } from "../api";
 import type { AttemptHistoryItem } from "../api";
 import { EmptyState, Icon, Skeletons } from "../ui";
+import { BackButton, Tabs } from "../components/feedback";
+import { barToneOf, pctOf } from "../lib/display";
+import { historyHref, playHref } from "../lib/links";
 import { HistDate } from "./History";
 
 type LoadState =
@@ -13,7 +16,6 @@ type LoadState =
   | { name: "ready"; items: AttemptHistoryItem[] };
 
 export const HistoryAll = () => {
-  const navigate = useNavigate();
   const [state, setState] = useState<LoadState>({ name: "loading" });
 
   useEffect(() => {
@@ -48,9 +50,7 @@ export const HistoryAll = () => {
             <EmptyState glyph="！" title="履歴を取得できません" sub={state.message} />
           </div>
           <div className="actions actions-center">
-            <button type="button" className="btn" onClick={() => navigate(-1)}>
-              戻る
-            </button>
+            <BackButton />
           </div>
         </div>
       </div>
@@ -159,26 +159,15 @@ const HistoryTabs = ({ items }: { items: AttemptHistoryItem[] }) => {
 
   return (
     <section aria-label="履歴の一覧切り替え">
-      <div className="hx-tabs" role="tablist" aria-label="カテゴリ・トピック・クイズ">
-        {(
-          [
-            { id: "categories", label: `カテゴリ(${groups.categories.length})` },
-            { id: "topics", label: `トピック(${groups.topics.length})` },
-            { id: "quizzes", label: `クイズ(${groups.quizzes.length})` },
-          ] as { id: HistoryTab; label: string }[]
-        ).map((t) => (
-          <button
-            key={t.id}
-            type="button"
-            role="tab"
-            aria-selected={tab === t.id}
-            className="hx-tab"
-            onClick={() => switchTab(t.id)}
-          >
-            {t.label}
-          </button>
-        ))}
-      </div>
+      <Tabs
+        tabs={[
+          { id: "categories", label: `カテゴリ(${groups.categories.length})` },
+          { id: "topics", label: `トピック(${groups.topics.length})` },
+          { id: "quizzes", label: `クイズ(${groups.quizzes.length})` },
+        ]}
+        active={tab}
+        onChange={switchTab}
+      />
       <div role="tabpanel" style={{ marginBottom: 20 }}>
         {list.length ? (
           <div className="cat-grid">
@@ -232,12 +221,12 @@ const HistoryTabs = ({ items }: { items: AttemptHistoryItem[] }) => {
       ) : (
         <ol className="recent-list">
           {filtered.map((r) => {
-            const pct = r.total ? r.score / r.total : 0;
+            const pct = pctOf(r.score, r.total);
             return (
               <li key={r.id} className="recent-item">
                 <Link
                   className="recent-main"
-                  to={`/play/${r.quizId}`}
+                  to={playHref(r.quizId)}
                   aria-label={`${r.quizTitle}に挑戦する`}
                 >
                   <div className="grow">
@@ -250,10 +239,7 @@ const HistoryTabs = ({ items }: { items: AttemptHistoryItem[] }) => {
                       )}
                     </div>
                     <div className="history-bar" aria-hidden="true" style={{ maxWidth: 220 }}>
-                      <i
-                        className={pct >= 0.7 ? "" : pct >= 0.4 ? "is-mid" : "is-low"}
-                        style={{ width: `${pct * 100}%` }}
-                      />
+                      <i className={barToneOf(pct)} style={{ width: `${pct * 100}%` }} />
                     </div>
                   </div>
                   <div className="recent-score tnum">
@@ -263,7 +249,7 @@ const HistoryTabs = ({ items }: { items: AttemptHistoryItem[] }) => {
                 </Link>
                 <Link
                   className="btn btn-sm btn-ghost"
-                  to={`/h/${r.quizId}`}
+                  to={historyHref(r.quizId)}
                   aria-label={`${r.quizTitle}の履歴を見る`}
                 >
                   履歴

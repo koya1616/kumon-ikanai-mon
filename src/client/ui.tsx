@@ -3,15 +3,9 @@ import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import { Link } from "react-router";
 import type { QuizStatus } from "./api";
+import { fmtDateTime } from "./lib/display";
 
-export const fmtDate = (s: string | null | undefined): string => {
-  if (!s) return "";
-  const d = new Date(
-    String(s).replace(" ", "T") + (String(s).includes("Z") || String(s).includes("+") ? "" : "Z"),
-  );
-  if (Number.isNaN(d.getTime())) return String(s).slice(0, 16);
-  return `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
-};
+export const fmtDate = fmtDateTime;
 
 type RingTone = "is-good" | "is-mid" | "is-bad" | "is-full";
 

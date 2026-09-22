@@ -25,124 +25,19 @@ import {
   categoryBodySchema,
 } from "./domain";
 import * as repo from "./repository";
-
-// NOTE(2026 Cloudflare推奨): 本来は `wrangler types` 生成の
-// `worker-configuration.d.ts` を使うこと。手書きEnvはズレの温床になるため、
-// ここは最小限に留め、デプロイ前に `wrangler types` へ移行すること。
-type Env = {
-  DB: D1Database;
-  BASIC_USER?: string;
-  BASIC_PASS?: string;
-};
-
-// ---------- レスポンス基盤 (Web標準のみ。フレームワーク不使用) ----------
-
-const SECURITY_HEADERS: Record<string, string> = {
-  "X-Content-Type-Options": "nosniff",
-  "X-Frame-Options": "SAMEORIGIN",
-  "Referrer-Policy": "strict-origin-when-cross-origin",
-};
-
-function json(data: unknown, status = 200, extra?: Record<string, string>): Response {
-  return new Response(JSON.stringify(data), {
-    status,
-    headers: {
-      "Content-Type": "application/json; charset=UTF-8",
-      ...SECURITY_HEADERS,
-      ...extra,
-    },
-  });
-}
-
-function unauthorized(): Response {
-  return json({ error: "認証が必要です" }, 401, {
-    "WWW-Authenticate": 'Basic realm="Secure Area"',
-  });
-}
-
-// ---------- Basic認証 (fail-closed + タイミングセーフ比較) ----------
-// デフォルト認証情報へのフォールバックは禁止。BASIC_USER / BASIC_PASS 未設定は
-// 500 で明示的に落とす。公開するのは /health のみ。
-
-async function timingSafeEqual(a: string, b: string): Promise<boolean> {
-  const enc = new TextEncoder();
-  const [da, db] = await Promise.all([
-    crypto.subtle.digest("SHA-256", enc.encode(a)),
-    crypto.subtle.digest("SHA-256", enc.encode(b)),
-  ]);
-  const xa = new Uint8Array(da);
-  const xb = new Uint8Array(db);
-  if (xa.length !== xb.length) return false;
-  let diff = 0;
-  for (let i = 0; i < xa.length; i++) diff |= xa[i]! ^ xb[i]!;
-  return diff === 0;
-}
-
-async function checkAuth(req: Request, env: Env): Promise<Response | null> {
-  const username = env.BASIC_USER;
-  const password = env.BASIC_PASS;
-  if (!username || !password) {
-    return json({ error: "BASIC_USER / BASIC_PASS が未設定です" }, 500);
-  }
-  const m = req.headers.get("Authorization")?.match(/^Basic (.+)$/);
-  if (m?.[1]) {
-    try {
-      const decoded = atob(m[1]);
-      const idx = decoded.indexOf(":");
-      const u = idx < 0 ? decoded : decoded.slice(0, idx);
-      const p = idx < 0 ? "" : decoded.slice(idx + 1);
-      if ((await timingSafeEqual(u, username)) && (await timingSafeEqual(p, password))) {
-        return null;
-      }
-    } catch {
-      /* base64 不正は認証失敗として扱う */
-    }
-  }
-  return unauthorized();
-}
-
-// ---------- 入力バリデーション (Zod 直利用) ----------
-
-/** 失敗時は 400 { error } を返す。成功時はパース済みデータを返す。 */
-function validated<T>(parsed: {
-  success: boolean;
-  data?: T;
-  error?: { issues?: { message?: string }[] };
-}): { data: T } | { res: Response } {
-  if (parsed.success) return { data: parsed.data as T };
-  const issue = parsed.error?.issues?.[0]?.message;
-  return { res: json({ error: issue ?? "入力が不正です" }, 400) };
-}
-
-function parseIdParam(raw: string): number | undefined {
-  const parsed = idParamSchema.safeParse(raw);
-  return parsed.success ? parsed.data : undefined;
-}
-
-async function readJson(req: Request): Promise<{ value: unknown } | { res: Response }> {
-  try {
-    return { value: (await req.json()) as unknown };
-  } catch {
-    return { res: json({ error: "入力が不正です" }, 400) };
-  }
-}
-
-/** Fisher–Yates (crypto乱数版: Math.randomより予測困難) */
-function shuffle<T>(arr: T[]): T[] {
-  const a = [...arr];
-  for (let i = a.length - 1; i > 0; i--) {
-    const rand = new Uint32Array(1);
-    crypto.getRandomValues(rand);
-    const j = Number(rand[0]! % (i + 1));
-    [a[i], a[j]] = [a[j]!, a[i]!];
-  }
-  return a;
-}
-
-const HISTORY_LOCK_MESSAGE =
-  "受験履歴があるため削除できません。履歴を残す仕様のため、削除ではなく新規作成で対応してください。";
-
-const ANSWERED_LOCK_MESSAGE = "受験履歴のある問題は削除できません。archived化で対応してください。";
+import {
+  ANSWERED_LOCK_MESSAGE,
+  HISTORY_LOCK_MESSAGE,
+  checkAuth,
+  clampLimit,
+  htmlResponse,
+  json,
+  parseIdParam,
+  readJson,
+  shuffle,
+  validated,
+} from "./http";
+import type { Env } from "./http";
 
 // ---------- ルーティング (exact match を :id より先に評価する) ----------
 
@@ -159,9 +54,7 @@ async function route(req: Request, env: Env): Promise<Response> {
   if (auth) return auth;
 
   if (method === "GET" && path === "/") {
-    return new Response(html, {
-      headers: { "Content-Type": "text/html; charset=UTF-8", ...SECURITY_HEADERS },
-    });
+    return htmlResponse(html);
   }
 
   // ---------- Category ----------
@@ -591,8 +484,7 @@ async function route(req: Request, env: Env): Promise<Response> {
           }),
         );
         if ("res" in v) return v.res;
-        const rawLimit = v.data.limit ?? 10;
-        const limit = Math.min(Math.max(rawLimit, 1), 50);
+        const limit = clampLimit(v.data.limit, 10, 50);
         return json(await repo.listAttemptsByQuiz(db, quizId, limit));
       }
     }
@@ -623,8 +515,7 @@ async function route(req: Request, env: Env): Promise<Response> {
       }),
     );
     if ("res" in v) return v.res;
-    const rawLimit = v.data.limit ?? 50;
-    const limit = Math.min(Math.max(rawLimit, 1), 100);
+    const limit = clampLimit(v.data.limit, 50, 100);
     return json(await repo.listRecentAttempts(db, limit));
   }
 
@@ -643,8 +534,7 @@ async function route(req: Request, env: Env): Promise<Response> {
         }),
     );
     if ("res" in v) return v.res;
-    const rawLimit = v.data.limit ?? 50;
-    const limit = Math.min(Math.max(rawLimit, 1), 100);
+    const limit = clampLimit(v.data.limit, 50, 100);
     return json({ items: await repo.listInProgressAttempts(db, limit, v.data.quizId) });
   }
 

@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router";
 import { categoryStats, useTree } from "../tree";
-import { Crumbs, EmptyState, Icon, Ring, Skeletons } from "../ui";
+import { Crumbs, EmptyState, Ring, Skeletons } from "../ui";
+import { SearchBox } from "../components/feedback";
+import { playHref } from "../lib/links";
 import { DifficultyFilter, QuizRow } from "../components/QuizRow";
 
 export const Category = () => {
@@ -83,16 +85,12 @@ export const Category = () => {
             </div>
           </div>
           <div className="toolbar">
-            <div className="search">
-              <Icon name="search" />
-              <input
-                type="search"
-                placeholder="クイズ名で検索"
-                aria-label="クイズを検索"
-                value={kw}
-                onChange={(e) => setKw(e.target.value)}
-              />
-            </div>
+            <SearchBox
+              value={kw}
+              onChange={setKw}
+              placeholder="クイズ名で検索"
+              ariaLabel="クイズを検索"
+            />
             <DifficultyFilter value={diff} onChange={setDiff} />
           </div>
           {blocks.length > 1 && (
@@ -116,7 +114,7 @@ export const Category = () => {
             </div>
             <div className="quiz-list">
               {quizzes.map((q) => (
-                <QuizRow key={q.id} quiz={q} onPlay={() => navigate(`/play/${q.id}`)} />
+                <QuizRow key={q.id} quiz={q} onPlay={() => navigate(playHref(q.id))} />
               ))}
             </div>
           </section>

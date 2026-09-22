@@ -2,14 +2,16 @@
 // フルブリードのカードグリッド + 答え合わせ式の自習UX。
 // GET /api/bookmarks はサーバ側でランダム順に返すため、シャッフル = 再取得。
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Link, useNavigate } from "react-router";
+import { Link } from "react-router";
 import { api, isCloze, isOrder } from "../api";
 import type { BookmarkItem } from "../api";
 import { ClozeStatement } from "../cloze";
 import { OrderBlocks } from "../order";
 import { CorrectAnswerBlock, ExplanationBody } from "../components/AnswerSheet";
+import { BackButton, SearchBox } from "../components/feedback";
+import { playHref } from "../lib/links";
 import { RichText } from "../rich";
-import { EmptyState, Icon, Skeletons } from "../ui";
+import { EmptyState, Skeletons } from "../ui";
 
 type LoadState =
   | { name: "loading" }
@@ -19,7 +21,6 @@ type LoadState =
 const BOOKMARK_LIMIT = 100;
 
 export const Bookmarks = () => {
-  const navigate = useNavigate();
   const [state, setState] = useState<LoadState>({ name: "loading" });
   const [kw, setKw] = useState("");
   const [quizId, setQuizId] = useState<number | null>(null);
@@ -82,26 +83,12 @@ export const Bookmarks = () => {
     <div className="screen">
       {state.name === "ready" && total > 0 && (
         <div className="bm-toolbar" role="search">
-          <div className="search">
-            <Icon name="search" />
-            <input
-              type="search"
-              placeholder="問題文・選択肢・クイズ名で絞り込む"
-              aria-label="ブックマークを絞り込む"
-              value={kw}
-              onChange={(e) => setKw(e.target.value)}
-            />
-            {kw && (
-              <button
-                type="button"
-                className="btn btn-sm btn-ghost"
-                onClick={() => setKw("")}
-                aria-label="検索を取り消す"
-              >
-                <Icon name="close" />
-              </button>
-            )}
-          </div>
+          <SearchBox
+            value={kw}
+            onChange={setKw}
+            placeholder="問題文・選択肢・クイズ名で絞り込む"
+            ariaLabel="ブックマークを絞り込む"
+          />
           {quizzes.length > 1 && (
             <select
               className="select bm-quiz-filter"
@@ -134,9 +121,7 @@ export const Bookmarks = () => {
               <EmptyState glyph="！" title="ブックマークを取得できません" sub={state.message} />
             </div>
             <div className="actions actions-center">
-              <button type="button" className="btn" onClick={() => navigate(-1)}>
-                戻る
-              </button>
+              <BackButton />
             </div>
           </>
         )}
@@ -197,7 +182,7 @@ const BookmarkCard = ({
       style={{ animationDelay: `${Math.min(index, 12) * 35}ms` }}
     >
       <div className="bm-head">
-        <Link className="chip chip-moegi bm-quiz" to={`/play/${it.quizId}`} title={it.quizTitle}>
+        <Link className="chip chip-moegi bm-quiz" to={playHref(it.quizId)} title={it.quizTitle}>
           {it.quizTitle}
         </Link>
         <button
@@ -289,7 +274,7 @@ const BookmarkCard = ({
         >
           {revealed ? "答えを隠す" : "答えを見る"}
         </button>
-        <Link className="bm-solve" to={`/play/${it.quizId}`}>
+        <Link className="bm-solve" to={playHref(it.quizId)}>
           このクイズで解く →
         </Link>
       </div>

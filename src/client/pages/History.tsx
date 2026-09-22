@@ -20,6 +20,8 @@ import { OrderBlocks } from "../order";
 import { CorrectAnswerBlock, ExplanationBody } from "../components/AnswerSheet";
 import { RichText } from "../rich";
 import { Crumbs, EmptyState, Skeletons, Stars } from "../ui";
+import { fmtDateTimeFull, pctOf as pctOfScore } from "../lib/display";
+import { toDisplayStatement } from "../components/quiz-ui";
 import { isClozeAnswerEqual, isOrderItemEqual } from "../../domain";
 
 /** 定着とみなす直近の連続正解数 (苦手復習の解消条件と揃える) */
@@ -44,7 +46,7 @@ type Tab = "questions" | "attempts";
 type Level = "weak" | "shaky" | "solid";
 type LevelFilter = Level | "all";
 
-const pctOf = (r: { score: number; total: number }) => (r.total ? r.score / r.total : 0);
+const pctOf = (r: { score: number; total: number }) => pctOfScore(r.score, r.total);
 const toneOf = (pct: number) => (pct >= 0.7 ? "is-good" : pct >= 0.4 ? "is-mid" : "is-bad");
 
 export const History = () => {
@@ -700,13 +702,7 @@ const AttemptPanel = ({
                   <span className="grow">
                     <span className="hx-qno">第{it.position}問</span>
                     <span className="review-statement rich">
-                      <RichText
-                        text={
-                          isCloze(it.questionType)
-                            ? it.statement.replace(/\{\{(\d+)\}\}/g, "［空欄$1］")
-                            : it.statement
-                        }
-                      />
+                      <RichText text={toDisplayStatement(it.statement, it.questionType)} />
                     </span>
                   </span>
                   <BookmarkButton questionId={it.questionId} />
@@ -801,17 +797,7 @@ const AttemptPanel = ({
 
 export const HistDate = ({ value }: { value: string | null }) => {
   if (!value) return <span />;
-  const d = new Date(
-    String(value).replace(" ", "T") +
-      (String(value).includes("Z") || String(value).includes("+") ? "" : "Z"),
-  );
-  if (Number.isNaN(d.getTime())) return <span>{String(value).slice(0, 16)}</span>;
-  return (
-    <span>
-      {d.getFullYear()}/{d.getMonth() + 1}/{d.getDate()} {String(d.getHours()).padStart(2, "0")}:
-      {String(d.getMinutes()).padStart(2, "0")}
-    </span>
-  );
+  return <span>{fmtDateTimeFull(value)}</span>;
 };
 
 // Result 側の aside から再利用する導線リンク
