@@ -223,6 +223,25 @@ export const Review = () => {
     }
   }, [revealed, pos, order.length, isRandom, randomBusy, loadRandom]);
 
+  // スキップ: 未回答のまま後回しにする (サーバ記録なし)。現在位置の1問を末尾へ回し、
+  // 同じ位置に次の未回答を持ってくる。残り1問のみの場合は回す先がないため何もしない。
+  // ランダム一問では記録せず次のランダム出題に進む。
+  const skip = useCallback(() => {
+    if (!target || revealed) return;
+    if (isRandom) {
+      if (!randomBusy) void loadRandom();
+      return;
+    }
+    if (order.length <= 1) return;
+    setOrder((prev) => {
+      if (pos < 0 || pos >= prev.length) return prev;
+      const cur = prev[pos];
+      if (!cur) return prev;
+      return [...prev.slice(0, pos), ...prev.slice(pos + 1), cur];
+    });
+    window.scrollTo(0, 0);
+  }, [target, revealed, isRandom, randomBusy, loadRandom, order.length, pos]);
+
   useEffect(() => {
     if (revealed) nextRef.current?.focus({ preventScroll: true });
   }, [revealed, pos]);
@@ -240,6 +259,12 @@ export const Review = () => {
           pick(Number(e.key));
         }
       }
+    } else if ((e.key === "s" || e.key === "S") && !revealed) {
+      // 入力欄での文字入力と衝突しないよう、フォーカスが入力欄にある場合は無視する
+      const t = e.target as HTMLElement | null;
+      if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA")) return;
+      e.preventDefault();
+      skip();
     } else if ((e.key === "Enter" || e.key === " " || e.key === "ArrowRight") && revealed) {
       e.preventDefault();
       if (finished) {
@@ -388,6 +413,9 @@ export const Review = () => {
       : targetOrder
         ? !!orderResult?.correct
         : picked === target.answer);
+  // スキップは未回答時のみ表示。1問だけの復習では回す先がないため隠す
+  // (ランダム一問は常に次の出題があるため表示する)
+  const showSkip = !revealed && (isRandom || order.length > 1);
   const clozeValues = targetCloze
     ? (clozeInputs[target.questionVersionId] ?? Array(target.correctAnswers.length).fill(""))
     : [];
@@ -512,9 +540,19 @@ export const Review = () => {
                     回答する
                   </button>
                 )}
+                {showSkip && (
+                  <button type="button" className="btn btn-block btn-ghost" onClick={skip}>
+                    スキップして後回し →
+                  </button>
+                )}
                 <p className="muted" style={{ textAlign: "center" }}>
                   全{target.correctAnswers.length}個の空欄を埋めて回答 ·{" "}
                   <span className="kbd">Enter</span> で次へ
+                  {showSkip && (
+                    <>
+                      {" "}· <span className="kbd">S</span> でスキップ
+                    </>
+                  )}
                 </p>
               </form>
             ) : targetOrder ? (
@@ -546,9 +584,19 @@ export const Review = () => {
                     回答する
                   </button>
                 )}
+                {showSkip && (
+                  <button type="button" className="btn btn-block btn-ghost" onClick={skip}>
+                    スキップして後回し →
+                  </button>
+                )}
                 <p className="muted" style={{ textAlign: "center" }}>
                   全{target.correctOrder.length}個を正しい順序に並べて回答 ·{" "}
                   <span className="kbd">Enter</span> で次へ
+                  {showSkip && (
+                    <>
+                      {" "}· <span className="kbd">S</span> でスキップ
+                    </>
+                  )}
                 </p>
               </form>
             ) : (
@@ -583,9 +631,19 @@ export const Review = () => {
                     );
                   })}
                 </div>
+                {showSkip && (
+                  <button type="button" className="btn btn-block btn-ghost" onClick={skip}>
+                    スキップして後回し →
+                  </button>
+                )}
                 <p className="muted" style={{ textAlign: "center" }}>
                   <span className="kbd">1</span> – <span className="kbd">4</span> で回答 ·{" "}
                   <span className="kbd">Enter</span> で次へ
+                  {showSkip && (
+                    <>
+                      {" "}· <span className="kbd">S</span> でスキップ
+                    </>
+                  )}
                 </p>
               </>
             )}
