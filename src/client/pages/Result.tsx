@@ -2,8 +2,9 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router";
 import { api, isCloze, isOrder } from "../api";
 import type { AttemptRecord } from "../api";
-import { ClozeAnswerList, ClozeFieldList, ClozeStatement } from "../cloze";
-import { OrderAnswerList, OrderBlocks } from "../order";
+import { ClozeFieldList, ClozeStatement } from "../cloze";
+import { OrderBlocks } from "../order";
+import { CorrectAnswerBlock, ExplanationBody } from "../components/AnswerSheet";
 import { RichText } from "../rich";
 import { usePlaySession } from "../session";
 import type { SessionAnswer } from "../session";
@@ -344,7 +345,10 @@ const ReviewCard = ({
             {!a.ok && (
               <div className="review-correct">
                 <span>正解:</span>
-                <ClozeAnswerList answers={a.details.map((d) => d.answer)} />
+                <CorrectAnswerBlock
+                  questionType={a.q.questionType}
+                  clozeAnswers={a.details.map((d) => d.answer)}
+                />
               </div>
             )}
           </>
@@ -360,7 +364,7 @@ const ReviewCard = ({
             {!a.ok && (
               <div className="review-correct">
                 <span>正しい順序:</span>
-                <OrderAnswerList answers={a.correctOrder} />
+                <CorrectAnswerBlock questionType={a.q.questionType} correctOrder={a.correctOrder} />
               </div>
             )}
           </>
@@ -382,11 +386,7 @@ const ReviewCard = ({
             )}
           </>
         )}
-        {a.exp && (
-          <div className="exp rich">
-            <RichText text={a.exp} />
-          </div>
-        )}
+        <ExplanationBody text={a.exp} variant="plain" />
       </div>
     </details>
   );
@@ -617,14 +617,18 @@ const DrillCard = ({
             現在 {correctCount} / {drill.doneCount} 正解
           </p>
           {!drillCorrect && targetCloze && (
-            <ClozeAnswerList answers={target.details.map((d) => d.answer)} />
+            <CorrectAnswerBlock
+              questionType={target.q.questionType}
+              clozeAnswers={target.details.map((d) => d.answer)}
+            />
           )}
-          {!drillCorrect && targetOrder && <OrderAnswerList answers={target.correctOrder} />}
-          {target.exp && (
-            <div className="exp rich">
-              <RichText text={target.exp} />
-            </div>
+          {!drillCorrect && targetOrder && (
+            <CorrectAnswerBlock
+              questionType={target.q.questionType}
+              correctOrder={target.correctOrder}
+            />
           )}
+          <ExplanationBody text={target.exp} variant="plain" />
           <div className="drill-actions">
             {!finished ? (
               <button type="button" className="btn btn-ink" onClick={next}>

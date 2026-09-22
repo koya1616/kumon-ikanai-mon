@@ -52,9 +52,12 @@ export const Shell = ({ children }: { children: ReactNode }) => {
 
   return (
     // CSS は data-mode="focus" で没入モード、data-page="bookmarks" でフルブリードに切り替える
+    // /play と /review は没入モード: 解説シートとタブバーの重なりを避ける
     <div
       className="app"
-      data-mode={pathname.startsWith("/play") ? "focus" : undefined}
+      data-mode={
+        pathname.startsWith("/play") || pathname.startsWith("/review") ? "focus" : undefined
+      }
       data-page={pathname.startsWith("/bookmarks") ? "bookmarks" : undefined}
     >
       <header className="nav">

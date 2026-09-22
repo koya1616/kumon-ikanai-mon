@@ -2,8 +2,9 @@ import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState } fro
 import { useNavigate, useParams } from "react-router";
 import { api, isCloze, isOrder } from "../api";
 import type { AnswerResult, AttemptState, InProgressAttempt, PlayQuestion, QuizMeta } from "../api";
-import { ClozeAnswerList, ClozeFieldList, ClozeStatement, parseClozeBlanks } from "../cloze";
-import { OrderAnswerList, OrderBlocks } from "../order";
+import { ClozeFieldList, ClozeStatement, parseClozeBlanks } from "../cloze";
+import { OrderBlocks } from "../order";
+import { AnswerSheet, CorrectAnswerBlock } from "../components/AnswerSheet";
 import { useDialog, useDialogOpen } from "../dialog";
 import { displayOrder, toDisplayedPos, toOriginalPos } from "../resume";
 import { RichText } from "../rich";
@@ -655,59 +656,36 @@ const PlayingScreen = ({ play, onChange }: { play: LivePlay; onChange: (p: LiveP
             </>
           )}
         </div>
-        <div className={`sheet${result ? " is-open" : ""}${expCollapsed ? " is-collapsed" : ""}`}>
-          {result && (
-            <div className={`sheet-card ${result.ok ? "is-ok" : "is-ng"}`}>
-              <div className="sheet-title">
-                <span className="sheet-badge" aria-hidden="true">
-                  {result.ok ? "○" : "×"}
-                </span>
-                <span>
-                  {result.ok
-                    ? "正解！"
-                    : isCloze(result.q.questionType)
-                      ? "不正解…"
-                      : isOrder(result.q.questionType)
-                        ? "不正解… 正しい順序を確認しよう"
-                        : `不正解… 正解は ${result.correct} 番`}
-                </span>
-                <span className="sheet-score">
-                  現在 {score} / {play.index + 1} 正解
-                </span>
-                <button
-                  type="button"
-                  className="btn btn-sm btn-ghost sheet-toggle"
-                  onClick={() => setCollapsedIndex(expCollapsed ? null : play.index)}
-                  aria-expanded={!expCollapsed}
-                >
-                  {expCollapsed ? "解説を見る" : "隠す"}
-                </button>
-              </div>
-              {!result.ok && isCloze(result.q.questionType) && (
-                <ClozeAnswerList answers={result.details.map((d) => d.answer)} />
-              )}
-              {!result.ok && isOrder(result.q.questionType) && (
-                <OrderAnswerList answers={result.correctOrder} />
-              )}
-              {!expCollapsed && (
-                <div className="sheet-exp rich">
-                  <RichText text={result.exp || "（解説はありません）"} />
-                </div>
-              )}
-              <div className="sheet-actions">
-                <span className="kbd sheet-hint">Enterで次へ</span>
-                <button
-                  ref={nextRef}
-                  type="button"
-                  className={`btn ${last ? "btn-primary" : "btn-ink"}`}
-                  onClick={next}
-                >
-                  {last ? "結果を見る" : "次の問題 →"}
-                </button>
-              </div>
-            </div>
-          )}
-        </div>
+        <AnswerSheet
+          open={!!result}
+          ok={result?.ok ?? false}
+          title={
+            result?.ok
+              ? "正解！"
+              : isCloze(result?.q.questionType)
+                ? "不正解…"
+                : isOrder(result?.q.questionType)
+                  ? "不正解… 正しい順序を確認しよう"
+                  : `不正解… 正解は ${result?.correct} 番`
+          }
+          scoreText={`現在 ${score} / ${play.index + 1} 正解`}
+          explanation={result?.exp ?? ""}
+          correctAnswerNode={
+            result && !result.ok ? (
+              <CorrectAnswerBlock
+                questionType={result.q.questionType}
+                clozeAnswers={result.details.map((d) => d.answer)}
+                correctOrder={result.correctOrder}
+              />
+            ) : undefined
+          }
+          collapsed={expCollapsed}
+          onToggleCollapsed={() => setCollapsedIndex(expCollapsed ? null : play.index)}
+          nextLabel={last ? "結果を見る" : "次の問題 →"}
+          nextVariant={last ? "primary" : "ink"}
+          onNext={next}
+          nextRef={nextRef}
+        />
       </div>
     </div>
   );

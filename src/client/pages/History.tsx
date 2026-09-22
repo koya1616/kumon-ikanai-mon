@@ -15,8 +15,9 @@ import type {
   QuizMeta,
 } from "../api";
 import { BookmarkButton } from "../bookmark";
-import { ClozeAnswerList, ClozeStatement } from "../cloze";
-import { OrderAnswerList, OrderBlocks } from "../order";
+import { ClozeStatement } from "../cloze";
+import { OrderBlocks } from "../order";
+import { CorrectAnswerBlock, ExplanationBody } from "../components/AnswerSheet";
 import { RichText } from "../rich";
 import { Crumbs, EmptyState, Skeletons, Stars } from "../ui";
 import { isClozeAnswerEqual, isOrderItemEqual } from "../../domain";
@@ -474,12 +475,12 @@ const QuestionRow = ({
           {isCloze(q.questionType) ? (
             <div className="hx-cloze-answer">
               <span>正解:</span>
-              <ClozeAnswerList answers={q.correctAnswers} />
+              <CorrectAnswerBlock questionType={q.questionType} clozeAnswers={q.correctAnswers} />
             </div>
           ) : isOrder(q.questionType) ? (
             <div className="hx-order-answer">
               <span>正しい順序:</span>
-              <OrderAnswerList answers={q.correctOrder} />
+              <CorrectAnswerBlock questionType={q.questionType} correctOrder={q.correctOrder} />
             </div>
           ) : (
             <ol className="hx-choices">
@@ -493,11 +494,7 @@ const QuestionRow = ({
               ))}
             </ol>
           )}
-          {q.explanation && (
-            <div className="exp rich">
-              <RichText text={q.explanation} />
-            </div>
-          )}
+          <ExplanationBody text={q.explanation} variant="plain" />
         </div>
       )}
     </li>
@@ -737,7 +734,10 @@ const AttemptPanel = ({
                       {(!it.correct || !it.pickedAnswers.length) && (
                         <div className="review-correct">
                           <span>正解:</span>
-                          <ClozeAnswerList answers={it.correctAnswers} />
+                          <CorrectAnswerBlock
+                            questionType={it.questionType}
+                            clozeAnswers={it.correctAnswers}
+                          />
                         </div>
                       )}
                     </>
@@ -759,7 +759,10 @@ const AttemptPanel = ({
                       {(!it.correct || !it.pickedOrder.length) && (
                         <div className="review-correct">
                           <span>正しい順序:</span>
-                          <OrderAnswerList answers={it.correctOrder} />
+                          <CorrectAnswerBlock
+                            questionType={it.questionType}
+                            correctOrder={it.correctOrder}
+                          />
                         </div>
                       )}
                     </>
@@ -785,11 +788,7 @@ const AttemptPanel = ({
                       )}
                     </>
                   )}
-                  {it.explanation && (
-                    <div className="exp rich">
-                      <RichText text={it.explanation} />
-                    </div>
-                  )}
+                  <ExplanationBody text={it.explanation} variant="plain" />
                 </div>
               </li>
             ))}

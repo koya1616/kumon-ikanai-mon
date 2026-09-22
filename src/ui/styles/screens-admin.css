@@ -145,6 +145,41 @@
     display: grid;
     gap: 20px;
   }
+  /* 単列モード (JSON一括登録など side なし画面用) */
+  .admin.admin-single {
+    grid-template-columns: 1fr;
+  }
+
+  /* JSON一括登録の確認プレビュー: 10問の問題文・正答を一覧する */
+  .json-preview {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin: 12px 0 0;
+    padding: 0;
+    list-style: none;
+  }
+  .json-preview-item {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 10px 12px;
+    background: var(--paper-2);
+    border: 1px solid var(--rule-soft);
+    border-radius: var(--r-md);
+    overflow-wrap: anywhere;
+  }
+  .json-preview-item .tnum {
+    font-weight: 800;
+  }
+  .json-preview-statement {
+    margin: 0;
+    font-weight: 600;
+    white-space: pre-wrap;
+  }
+  .json-preview-item .muted {
+    margin: 0;
+  }
   @media (min-width: 900px) {
     .admin {
       grid-template-columns: 320px 1fr;

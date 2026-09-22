@@ -46,7 +46,13 @@
     {
       "questionType": "order_blocks",
       "statement": "取得したJSONを表示する非同期関数を正しい順序に並べ替えよ。",
-      "items": ["async function main() {", "const res = await fetch(url);", "const data: unknown = await res.json();", "console.log(data);", "}"],
+      "items": [
+        "async function main() {",
+        "const res = await fetch(url);",
+        "const data: unknown = await res.json();",
+        "console.log(data);",
+        "}"
+      ],
       "explanation": "関数宣言→fetch→json変換→表示→閉じ括弧の順です。await の順序を変えると未解決の Promise を扱ってしまいます。"
     },
     {

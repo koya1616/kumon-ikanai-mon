@@ -7,8 +7,9 @@ import { api, isCloze, isOrder } from "../api";
 import type { MistakeItem, ReviewAnswerResult } from "../api";
 import { BookmarkButton } from "../bookmark";
 import { useDialogOpen } from "../dialog";
-import { ClozeAnswerList, ClozeFieldList, ClozeStatement } from "../cloze";
-import { OrderAnswerList, OrderBlocks } from "../order";
+import { ClozeFieldList, ClozeStatement } from "../cloze";
+import { OrderBlocks } from "../order";
+import { AnswerSheet, CorrectAnswerBlock } from "../components/AnswerSheet";
 import { RichText } from "../rich";
 import { shuffle } from "../resume";
 import { Crumbs, EmptyState, Skeletons } from "../ui";
@@ -550,7 +551,8 @@ export const Review = () => {
                   <span className="kbd">Enter</span> で次へ
                   {showSkip && (
                     <>
-                      {" "}· <span className="kbd">S</span> でスキップ
+                      {" "}
+                      · <span className="kbd">S</span> でスキップ
                     </>
                   )}
                 </p>
@@ -594,7 +596,8 @@ export const Review = () => {
                   <span className="kbd">Enter</span> で次へ
                   {showSkip && (
                     <>
-                      {" "}· <span className="kbd">S</span> でスキップ
+                      {" "}
+                      · <span className="kbd">S</span> でスキップ
                     </>
                   )}
                 </p>
@@ -641,7 +644,8 @@ export const Review = () => {
                   <span className="kbd">Enter</span> で次へ
                   {showSkip && (
                     <>
-                      {" "}· <span className="kbd">S</span> でスキップ
+                      {" "}
+                      · <span className="kbd">S</span> でスキップ
                     </>
                   )}
                 </p>
@@ -649,77 +653,60 @@ export const Review = () => {
             )}
           </div>
         </div>
-        <div className={`sheet${revealed ? " is-open" : ""}${expCollapsed ? " is-collapsed" : ""}`}>
-          {revealed && (
-            <div className={`sheet-card ${isOk ? "is-ok" : "is-ng"}`}>
-              <div className="sheet-title">
-                <span className="sheet-badge" aria-hidden="true">
-                  {isOk ? "○" : "×"}
-                </span>
-                <span>
-                  {isOk
-                    ? isRandom
-                      ? "正解！"
-                      : "正解！よく直せたね"
-                    : targetCloze
-                      ? "不正解…"
-                      : targetOrder
-                        ? "不正解… 正しい順序を確認しよう"
-                        : `不正解… 正解は ${target.answer} 番`}
-                </span>
-                <span className="sheet-score">
-                  現在 {correctCount} / {doneCount} 正解
-                  {(() => {
-                    const info = serverInfo[target.questionVersionId];
-                    if (!info) return null;
-                    if (info.resolved) return " · 苦手解消！";
-                    if (info.correct) return ` · あと${info.remaining}回で解消`;
-                    return null;
-                  })()}
-                </span>
-                <button
-                  type="button"
-                  className="btn btn-sm btn-ghost sheet-toggle"
-                  onClick={() =>
-                    setCollapsedFor(expCollapsed ? null : (target?.questionVersionId ?? null))
-                  }
-                  aria-expanded={!expCollapsed}
-                >
-                  {expCollapsed ? "解説を見る" : "隠す"}
-                </button>
-              </div>
-              {!isOk && targetCloze && (
-                <ClozeAnswerList answers={(clozeResult?.details ?? []).map((d) => d.answer)} />
-              )}
-              {!isOk && targetOrder && (
-                <OrderAnswerList answers={orderResult?.correctOrder ?? target.correctOrder} />
-              )}
-              {!expCollapsed && (
-                <div className="sheet-exp rich">
-                  <RichText text={target.explanation || "（解説はありません）"} />
-                </div>
-              )}
-              <div className="sheet-actions">
-                <span className="kbd sheet-hint">Enterで次へ</span>
-                <button
-                  ref={nextRef}
-                  type="button"
-                  className={`btn ${pos + 1 >= order.length ? "btn-primary" : "btn-ink"}`}
-                  onClick={next}
-                  disabled={isRandom && randomBusy}
-                >
-                  {isRandom
-                    ? randomBusy
-                      ? "出題中…"
-                      : "もう一問 →"
-                    : pos + 1 >= order.length
-                      ? "結果を見る"
-                      : "次の問題 →"}
-                </button>
-              </div>
-            </div>
-          )}
-        </div>
+        <AnswerSheet
+          open={revealed}
+          ok={isOk}
+          title={
+            isOk
+              ? isRandom
+                ? "正解！"
+                : "正解！よく直せたね"
+              : targetCloze
+                ? "不正解…"
+                : targetOrder
+                  ? "不正解… 正しい順序を確認しよう"
+                  : `不正解… 正解は ${target.answer} 番`
+          }
+          scoreText={
+            <>
+              現在 {correctCount} / {doneCount} 正解
+              {(() => {
+                const info = serverInfo[target.questionVersionId];
+                if (!info) return null;
+                if (info.resolved) return " · 苦手解消！";
+                if (info.correct) return ` · あと${info.remaining}回で解消`;
+                return null;
+              })()}
+            </>
+          }
+          explanation={target.explanation}
+          correctAnswerNode={
+            !isOk ? (
+              <CorrectAnswerBlock
+                questionType={target.questionType}
+                clozeAnswers={(clozeResult?.details ?? []).map((d) => d.answer)}
+                correctOrder={orderResult?.correctOrder ?? target.correctOrder}
+              />
+            ) : undefined
+          }
+          collapsed={expCollapsed}
+          onToggleCollapsed={() =>
+            setCollapsedFor(expCollapsed ? null : (target?.questionVersionId ?? null))
+          }
+          nextLabel={
+            isRandom
+              ? randomBusy
+                ? "出題中…"
+                : "もう一問 →"
+              : pos + 1 >= order.length
+                ? "結果を見る"
+                : "次の問題 →"
+          }
+          nextVariant={pos + 1 >= order.length ? "primary" : "ink"}
+          onNext={next}
+          nextRef={nextRef}
+          nextDisabled={isRandom && randomBusy}
+        />
       </div>
     </div>
   );

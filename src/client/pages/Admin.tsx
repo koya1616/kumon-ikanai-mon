@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import type { ComponentProps, ReactNode } from "react";
-import { useLocation, useNavigate, useParams } from "react-router";
+import { Link, useLocation, useNavigate, useParams } from "react-router";
 import { api, QUESTIONS_PER_QUIZ } from "../api";
 import type { Category, Quiz, QuizStatus, Topic } from "../api";
 import { useDialog } from "../dialog";
@@ -10,7 +10,7 @@ import { useTree } from "../tree";
 import { JsonImportCard } from "./JsonImport";
 import { QuestionEditor } from "./QuestionEditor";
 
-type Kind = "" | "c" | "t" | "q";
+type Kind = "" | "c" | "t" | "q" | "new" | "import";
 
 interface Selection {
   categories: Category[];
@@ -29,13 +29,17 @@ export const Admin = () => {
   const dialog = useDialog();
   const { invalidate } = useTree();
 
-  const kind: Kind = location.pathname.startsWith("/admin/c/")
-    ? "c"
-    : location.pathname.startsWith("/admin/t/")
-      ? "t"
-      : location.pathname.startsWith("/admin/q/")
-        ? "q"
-        : "";
+  const kind: Kind = location.pathname.startsWith("/admin/import")
+    ? "import"
+    : location.pathname.startsWith("/admin/new")
+      ? "new"
+      : location.pathname.startsWith("/admin/c/")
+        ? "c"
+        : location.pathname.startsWith("/admin/t/")
+          ? "t"
+          : location.pathname.startsWith("/admin/q/")
+            ? "q"
+            : "";
   const id = Number(params.id);
 
   const [sel, setSel] = useState<Selection | null>(null);
@@ -50,6 +54,11 @@ export const Admin = () => {
       topicId: null,
       quizId: null,
     };
+    // JSON一括登録・新規作成は階層選択と分離した専用画面。カテゴリ一覧だけ持つ。
+    if (kind === "import" || kind === "new") {
+      setSel(next);
+      return;
+    }
     if (kind === "c") {
       next.catId = id;
       next.topics = await api<Topic[]>(`/api/topics?categoryId=${id}`);
@@ -176,27 +185,95 @@ export const Admin = () => {
     <div className="screen">
       <header className="admin-head">
         <span className="eyebrow">管理画面</span>
-        <h1 className="title-lg">カテゴリ › トピック › クイズを管理</h1>
-        {sel ? <AdminSteps sel={sel} /> : <p className="muted">読み込み中…</p>}
+        <h1 className="title-lg">
+          {kind === "import"
+            ? "JSONで一括登録"
+            : kind === "new"
+              ? "新規作成"
+              : "カテゴリ › トピック › クイズを管理"}
+        </h1>
+        <AdminTabs kind={kind} />
+        {kind !== "import" && sel && <ManageSubTabs kind={kind} sel={sel} />}
+        {kind !== "import" &&
+          kind !== "new" &&
+          (sel ? <AdminSteps sel={sel} /> : <p className="muted">読み込み中…</p>)}
       </header>
-      <div className="admin">
-        <aside className="admin-side">{!sel ? <Skeletons n={2} /> : <AdminSide sel={sel} />}</aside>
-        <div className="admin-main">
-          {!sel ? (
-            <Skeletons n={2} />
-          ) : (
-            <AdminMain
-              sel={sel}
-              kind={kind}
-              onRename={renameEntity}
-              onDelete={deleteEntity}
-              onEditQuiz={editQuizDialog}
-              onRefresh={refreshAll}
-            />
-          )}
+      {kind === "import" || kind === "new" ? (
+        <div className="admin admin-single">
+          <div className="admin-main">
+            {!sel ? (
+              <Skeletons n={2} />
+            ) : (
+              <AdminMain
+                sel={sel}
+                kind={kind}
+                onRename={renameEntity}
+                onDelete={deleteEntity}
+                onEditQuiz={editQuizDialog}
+                onRefresh={refreshAll}
+              />
+            )}
+          </div>
         </div>
-      </div>
+      ) : (
+        <div className="admin">
+          <aside className="admin-side">
+            {!sel ? <Skeletons n={2} /> : <AdminSide sel={sel} />}
+          </aside>
+          <div className="admin-main">
+            {!sel ? (
+              <Skeletons n={2} />
+            ) : (
+              <AdminMain
+                sel={sel}
+                kind={kind}
+                onRename={renameEntity}
+                onDelete={deleteEntity}
+                onEditQuiz={editQuizDialog}
+                onRefresh={refreshAll}
+              />
+            )}
+          </div>
+        </div>
+      )}
     </div>
+  );
+};
+
+const AdminTabs = ({ kind }: { kind: Kind }) => {
+  const isJson = kind === "import";
+  return (
+    <nav className="hx-tabs" aria-label="管理の方法" style={{ margin: "12px 0 0" }}>
+      <Link className="hx-tab" to="/admin" aria-selected={!isJson}>
+        通常管理（追加・更新・削除）
+      </Link>
+      <Link className="hx-tab" to="/admin/import" aria-selected={isJson}>
+        JSONで一括登録
+      </Link>
+    </nav>
+  );
+};
+
+const ManageSubTabs = ({ kind, sel }: { kind: Kind; sel: Selection }) => {
+  const isCreate = kind === "new";
+  // 閲覧タブに戻るときは今の選択を維持する (深い階層を優先)。
+  const browseHref =
+    sel.quizId != null
+      ? `/admin/q/${sel.quizId}`
+      : sel.topicId != null
+        ? `/admin/t/${sel.topicId}`
+        : sel.catId != null
+          ? `/admin/c/${sel.catId}`
+          : "/admin";
+  return (
+    <nav className="hx-tabs" aria-label="通常管理の操作" style={{ margin: "12px 0 0" }}>
+      <Link className="hx-tab" to={browseHref} aria-selected={!isCreate}>
+        閲覧・編集・削除
+      </Link>
+      <Link className="hx-tab" to="/admin/new" aria-selected={isCreate}>
+        新規作成
+      </Link>
+    </nav>
   );
 };
 
@@ -274,57 +351,8 @@ const AdminSteps = ({ sel }: { sel: Selection }) => {
   );
 };
 
-const AddForm = ({
-  placeholder,
-  onAdd,
-}: {
-  placeholder: string;
-  onAdd: (title: string) => Promise<void>;
-}) => {
-  const toast = useToast();
-  const [value, setValue] = useState("");
-  const [busy, setBusy] = useState(false);
-  const submit = () => {
-    const v = value.trim();
-    if (!v) return;
-    setBusy(true);
-    onAdd(v)
-      .then(() => setValue(""))
-      .catch((e: Error) => toast(e.message, "ng"))
-      .finally(() => setBusy(false));
-  };
-  return (
-    <div className="tree-add">
-      <input
-        className="input"
-        placeholder={placeholder}
-        maxLength={100}
-        aria-label={placeholder}
-        value={value}
-        onChange={(e) => setValue(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === "Enter") {
-            e.preventDefault();
-            submit();
-          }
-        }}
-      />
-      <button
-        type="button"
-        className="btn btn-ink btn-sm"
-        disabled={busy || !value.trim()}
-        onClick={submit}
-      >
-        <Icon name="plus" />
-        追加
-      </button>
-    </div>
-  );
-};
-
 const AdminSide = ({ sel }: { sel: Selection }) => {
   const navigate = useNavigate();
-  const toast = useToast();
   const cat = sel.categories.find((c) => c.id === sel.catId);
   return (
     <>
@@ -335,7 +363,7 @@ const AdminSide = ({ sel }: { sel: Selection }) => {
           </span>
           <span className="chip">{sel.categories.length}件</span>
         </div>
-        <p className="muted side-hint">大分類。まずここを選ぶ・作る</p>
+        <p className="muted side-hint">大分類。選ぶとトピックが見られます</p>
         <div className="tree-level" role="list">
           {sel.categories.map((c) => (
             <button
@@ -352,17 +380,6 @@ const AdminSide = ({ sel }: { sel: Selection }) => {
           ))}
           {!sel.categories.length && <p className="muted">まだありません</p>}
         </div>
-        <AddForm
-          placeholder="新しいカテゴリ名を入力"
-          onAdd={(title) =>
-            api<{ id: number }>("/api/categories", { method: "POST", body: { title } }).then(
-              (r) => {
-                toast("カテゴリを追加しました", "ok");
-                navigate(`/admin/c/${r.id}`);
-              },
-            )
-          }
-        />
       </section>
 
       {sel.catId != null && (
@@ -390,18 +407,6 @@ const AdminSide = ({ sel }: { sel: Selection }) => {
             ))}
             {!sel.topics.length && <p className="muted">まだありません</p>}
           </div>
-          <AddForm
-            placeholder="新しいトピック名を入力"
-            onAdd={(title) =>
-              api<{ id: number }>("/api/topics", {
-                method: "POST",
-                body: { categoryId: sel.catId, title },
-              }).then((r) => {
-                toast("トピックを追加しました", "ok");
-                navigate(`/admin/t/${r.id}`);
-              })
-            }
-          />
         </section>
       )}
     </>
@@ -511,6 +516,269 @@ const QuizSettingsFields = ({ quiz }: { quiz: Quiz }) => {
         </label>
       </div>
     </div>
+  );
+};
+
+const CreateView = ({ sel }: { sel: Selection }) => {
+  return (
+    <div className="stack">
+      <CategoryCreateCard />
+      <TopicCreateCard categories={sel.categories} />
+      <QuizCreateSection categories={sel.categories} />
+    </div>
+  );
+};
+
+const CreateField = ({ label, children }: { label: string; children: ReactNode }) => (
+  <label className="field">
+    <span className="label">{label}</span>
+    {children}
+  </label>
+);
+
+const CategoryCreateCard = () => {
+  const toast = useToast();
+  const navigate = useNavigate();
+  const { invalidate } = useTree();
+  const [title, setTitle] = useState("");
+  const [busy, setBusy] = useState(false);
+  const submit = () => {
+    const v = title.trim();
+    if (!v) return;
+    setBusy(true);
+    api<{ id: number }>("/api/categories", { method: "POST", body: { title: v } })
+      .then((r) => {
+        toast("カテゴリを追加しました", "ok");
+        invalidate();
+        navigate(`/admin/c/${r.id}`);
+      })
+      .catch((e: Error) => {
+        toast(e.message, "ng");
+        setBusy(false);
+      });
+  };
+  return (
+    <section className="card card-pad create-card" aria-label="カテゴリの新規作成">
+      <div className="create-head">
+        <span className="create-badge" aria-hidden="true">
+          ＋
+        </span>
+        <div className="grow">
+          <h2 className="title-md">新しいカテゴリを作成</h2>
+          <p className="muted">大分類（例: プログラミング）。作るとトピックを入れられます。</p>
+        </div>
+        <span className="chip chip-shu">新規作成</span>
+      </div>
+      <div className="form-grid">
+        <input
+          className="input"
+          placeholder="カテゴリ名（例: プログラミング）"
+          maxLength={100}
+          aria-label="カテゴリ名"
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              submit();
+            }
+          }}
+        />
+      </div>
+      <div className="actions actions-end">
+        <button
+          type="button"
+          className="btn btn-primary"
+          disabled={busy || !title.trim()}
+          onClick={submit}
+        >
+          <Icon name="plus" />
+          カテゴリを作成する
+        </button>
+      </div>
+    </section>
+  );
+};
+
+const TopicCreateCard = ({ categories }: { categories: Category[] }) => {
+  const toast = useToast();
+  const navigate = useNavigate();
+  const { invalidate } = useTree();
+  const [categoryId, setCategoryId] = useState<number | "">(
+    categories.length === 1 ? (categories[0]?.id ?? "") : "",
+  );
+  const [title, setTitle] = useState("");
+  const [busy, setBusy] = useState(false);
+  const submit = () => {
+    const v = title.trim();
+    if (categoryId === "" || !v) return;
+    setBusy(true);
+    api<{ id: number }>("/api/topics", {
+      method: "POST",
+      body: { categoryId, title: v },
+    })
+      .then((r) => {
+        toast("トピックを追加しました", "ok");
+        invalidate();
+        navigate(`/admin/t/${r.id}`);
+      })
+      .catch((e: Error) => {
+        toast(e.message, "ng");
+        setBusy(false);
+      });
+  };
+  return (
+    <section className="card card-pad create-card" aria-label="トピックの新規作成">
+      <div className="create-head">
+        <span className="create-badge" aria-hidden="true">
+          ＋
+        </span>
+        <div className="grow">
+          <h2 className="title-md">新しいトピックを作成</h2>
+          <p className="muted">選んだカテゴリの中分類として追加します。</p>
+        </div>
+        <span className="chip chip-shu">新規作成</span>
+      </div>
+      {!categories.length ? (
+        <p className="muted">先にカテゴリを作成してください。</p>
+      ) : (
+        <>
+          <div className="form-grid cols-2">
+            <CreateField label="カテゴリ">
+              <select
+                className="select"
+                aria-label="カテゴリ"
+                value={categoryId}
+                onChange={(e) => setCategoryId(e.target.value === "" ? "" : Number(e.target.value))}
+              >
+                <option value="">カテゴリを選ぶ</option>
+                {categories.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.title}
+                  </option>
+                ))}
+              </select>
+            </CreateField>
+            <CreateField label="トピック名">
+              <input
+                className="input"
+                placeholder="トピック名（例: Golang）"
+                maxLength={100}
+                aria-label="トピック名"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    submit();
+                  }
+                }}
+              />
+            </CreateField>
+          </div>
+          <div className="actions actions-end">
+            <button
+              type="button"
+              className="btn btn-primary"
+              disabled={busy || categoryId === "" || !title.trim()}
+              onClick={submit}
+            >
+              <Icon name="plus" />
+              トピックを作成する
+            </button>
+          </div>
+        </>
+      )}
+    </section>
+  );
+};
+
+const QuizCreateSection = ({ categories }: { categories: Category[] }) => {
+  const navigate = useNavigate();
+  const { invalidate } = useTree();
+  const [categoryId, setCategoryId] = useState<number | "">(
+    categories.length === 1 ? (categories[0]?.id ?? "") : "",
+  );
+  const [topics, setTopics] = useState<Topic[]>([]);
+  const [topicId, setTopicId] = useState<number | "">("");
+
+  useEffect(() => {
+    if (categoryId === "") {
+      setTopics([]);
+      setTopicId("");
+      return;
+    }
+    let alive = true;
+    api<Topic[]>(`/api/topics?categoryId=${categoryId}`)
+      .then((ts) => {
+        if (!alive) return;
+        setTopics(ts);
+        setTopicId("");
+      })
+      .catch(() => {
+        if (!alive) return;
+        setTopics([]);
+        setTopicId("");
+      });
+    return () => {
+      alive = false;
+    };
+  }, [categoryId]);
+
+  const topic = topics.find((t) => t.id === topicId);
+  return (
+    <section aria-label="クイズの新規作成">
+      <div className="card card-pad" style={{ marginBottom: 12 }}>
+        <div className="form-grid cols-2">
+          <CreateField label="カテゴリ">
+            <select
+              className="select"
+              aria-label="カテゴリ"
+              value={categoryId}
+              onChange={(e) => setCategoryId(e.target.value === "" ? "" : Number(e.target.value))}
+            >
+              <option value="">カテゴリを選ぶ</option>
+              {categories.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.title}
+                </option>
+              ))}
+            </select>
+          </CreateField>
+          <CreateField label="トピック">
+            <select
+              className="select"
+              aria-label="トピック"
+              value={topicId}
+              disabled={categoryId === ""}
+              onChange={(e) => setTopicId(e.target.value === "" ? "" : Number(e.target.value))}
+            >
+              <option value="">トピックを選ぶ</option>
+              {topics.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.title}
+                </option>
+              ))}
+            </select>
+          </CreateField>
+        </div>
+        {categoryId !== "" && !topics.length && (
+          <p className="muted" style={{ marginBottom: 0 }}>
+            このカテゴリにはまだトピックがありません。上の「新しいトピックを作成」から先に作ってください。
+          </p>
+        )}
+      </div>
+      {topic && (
+        <QuizCreateCard
+          topicId={topic.id}
+          topicTitle={topic.title}
+          onCreated={(newId) => {
+            invalidate();
+            navigate(`/admin/q/${newId}`);
+          }}
+        />
+      )}
+    </section>
   );
 };
 
@@ -643,11 +911,39 @@ const AdminMain = ({
   onEditQuiz: (q: Quiz) => void;
   onRefresh: () => void;
 }) => {
-  const navigate = useNavigate();
-  const { invalidate } = useTree();
+  // JSON一括登録は通常CRUDと分離した専用画面 (/admin/import)。
+  if (kind === "import") {
+    return (
+      <>
+        <Crumbs items={[{ label: "管理", href: "/admin" }, { label: "JSONで一括登録" }]} />
+        <JsonImportCard />
+      </>
+    );
+  }
+
+  // 新規作成は閲覧・編集・削除と分離した専用タブ (/admin/new)。
+  if (kind === "new") {
+    return (
+      <>
+        <Crumbs items={[{ label: "管理", href: "/admin" }, { label: "新規作成" }]} />
+        <CreateView sel={sel} />
+      </>
+    );
+  }
 
   if (!sel.catId) {
-    return <JsonImportCard />;
+    return (
+      <>
+        <Crumbs items={[{ label: "管理" }]} />
+        <div className="card">
+          <EmptyState
+            glyph="管"
+            title="カテゴリを選んでください"
+            sub="左の一覧からカテゴリを選ぶと、トピック・クイズを見られます。"
+          />
+        </div>
+      </>
+    );
   }
   const cat = sel.categories.find((c) => c.id === sel.catId);
   if (!cat) {
@@ -689,11 +985,11 @@ const AdminMain = ({
         <div className="card">
           <EmptyState
             glyph="題"
-            title={sel.topics.length ? "トピックを選んでください" : "最初のトピックを作りましょう"}
+            title={sel.topics.length ? "トピックを選んでください" : "まだトピックがありません"}
             sub={
               sel.topics.length
                 ? "左の一覧からトピックを選ぶと、クイズを管理できます。"
-                : "左の「新しいトピック名を入力」→「追加」で作成できます。"
+                : "「新規作成」タブから最初のトピックを作りましょう。"
             }
           />
         </div>
@@ -743,20 +1039,12 @@ const AdminMain = ({
             },
           ]}
         />
-        <QuizCreateCard
-          topicId={topic.id}
-          topicTitle={topic.title}
-          onCreated={(newId) => {
-            invalidate();
-            navigate(`/admin/q/${newId}`);
-          }}
-        />
         <div className="section-head">
-          <h2 className="title-md">登録済みクイズを編集</h2>
+          <h2 className="title-md">登録済みクイズ</h2>
           <span className="chip">{sel.quizzes.length}件</span>
         </div>
         <p className="muted" style={{ marginTop: -8 }}>
-          「問題を編集」で10問を登録・更新します。「設定を変更」はタイトル・難易度・公開状態の編集です。
+          「問題を編集」で10問を登録・更新します。「設定を変更」はタイトル・難易度・公開状態の編集です。新しいクイズは「新規作成」タブから作れます。
         </p>
         <div className="admin-quiz-list">
           {!sel.quizzes.length && (
@@ -764,7 +1052,7 @@ const AdminMain = ({
               <EmptyState
                 glyph="問"
                 title="クイズがありません"
-                sub="上の「新しいクイズを作成」から作成してください。"
+                sub="「新規作成」タブからクイズを作成してください。"
               />
             </div>
           )}
@@ -772,7 +1060,6 @@ const AdminMain = ({
             <QuizRow key={q.id} q={q} onEdit={onEditQuiz} />
           ))}
         </div>
-        <JsonImportCard />
       </>
     );
   }
@@ -784,7 +1071,6 @@ const AdminMain = ({
       </div>
     );
   }
-  void kind;
   return (
     <>
       <Crumbs

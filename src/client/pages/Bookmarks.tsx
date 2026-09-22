@@ -5,8 +5,9 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router";
 import { api, isCloze, isOrder } from "../api";
 import type { BookmarkItem } from "../api";
-import { ClozeAnswerList, ClozeStatement } from "../cloze";
-import { OrderAnswerList, OrderBlocks } from "../order";
+import { ClozeStatement } from "../cloze";
+import { OrderBlocks } from "../order";
+import { CorrectAnswerBlock, ExplanationBody } from "../components/AnswerSheet";
 import { RichText } from "../rich";
 import { EmptyState, Icon, Skeletons } from "../ui";
 
@@ -266,21 +267,17 @@ const BookmarkCard = ({
           {isCloze(it.questionType) ? (
             <div className="bm-answer">
               <span>正解:</span>
-              <ClozeAnswerList answers={it.correctAnswers} />
+              <CorrectAnswerBlock questionType={it.questionType} clozeAnswers={it.correctAnswers} />
             </div>
           ) : isOrder(it.questionType) ? (
             <div className="bm-answer">
               <span>正しい順序:</span>
-              <OrderAnswerList answers={it.correctOrder} />
+              <CorrectAnswerBlock questionType={it.questionType} correctOrder={it.correctOrder} />
             </div>
           ) : (
             <p className="bm-answer tnum">正解は {it.answer} 番</p>
           )}
-          {it.explanation && (
-            <div className="exp rich">
-              <RichText text={it.explanation} />
-            </div>
-          )}
+          <ExplanationBody text={it.explanation} variant="plain" />
         </>
       )}
       <div className="bm-foot">

@@ -5,12 +5,56 @@ import { api, QUESTIONS_PER_QUIZ } from "../api";
 import { useToast } from "../toast";
 import { useTree } from "../tree";
 
+interface PreviewQuestion {
+  no: number;
+  kind: "4択" | "穴埋め" | "並べ替え";
+  statement: string;
+  detail: string;
+}
+
 interface ParsedSummary {
   category: string;
   topic: string;
   title: string;
   count: number;
+  questions: PreviewQuestion[];
 }
+
+const toText = (v: unknown): string => (typeof v === "string" ? v.trim() : "");
+
+const previewOne = (q: unknown, index: number): PreviewQuestion => {
+  const no = index + 1;
+  const rec = (q ?? {}) as Record<string, unknown>;
+  const statement = toText(rec.statement);
+  if (rec.questionType === "cloze_text") {
+    const answers = Array.isArray(rec.answers) ? rec.answers.map(toText).filter(Boolean) : [];
+    return {
+      no,
+      kind: "穴埋め",
+      statement,
+      detail: answers.length ? `正答: ${answers.join(" / ")}` : "正答: (なし)",
+    };
+  }
+  if (rec.questionType === "order_blocks") {
+    const items = Array.isArray(rec.items) ? rec.items.map(toText).filter(Boolean) : [];
+    return {
+      no,
+      kind: "並べ替え",
+      statement,
+      detail: items.length ? `${items.length}ブロック: ${items.join(" → ")}` : "ブロック: (なし)",
+    };
+  }
+  const answer = Number(rec.answer);
+  return {
+    no,
+    kind: "4択",
+    statement,
+    detail:
+      Number.isInteger(answer) && answer >= 1 && answer <= 4
+        ? `正答: 選択肢${answer}`
+        : "正答: (なし)",
+  };
+};
 
 const parseQuizJson = (text: string): ParsedSummary => {
   const data: unknown = JSON.parse(text);
@@ -42,6 +86,7 @@ const parseQuizJson = (text: string): ParsedSummary => {
     topic: topic.trim(),
     title: (quiz as { title: string }).title.trim(),
     count: questions.length,
+    questions: (questions as unknown[]).map(previewOne),
   };
 };
 
@@ -183,10 +228,26 @@ export const JsonImportCard = () => {
         </button>
       </div>
       {preview && (
-        <div className="row mt">
-          <span className="chip chip-moegi">
-            「{preview.category} › {preview.topic} › {preview.title}」 {preview.count}問
-          </span>
+        <div className="mt">
+          <div className="row wrap">
+            <span className="chip chip-moegi">
+              「{preview.category} › {preview.topic} › {preview.title}」 {preview.count}問
+            </span>
+          </div>
+          <ol className="json-preview">
+            {preview.questions.map((q) => (
+              <li key={q.no} className="json-preview-item">
+                <div className="row wrap">
+                  <span className="tnum" aria-label={`${q.no}問目`}>
+                    Q{q.no}
+                  </span>
+                  <span className="chip">{q.kind}</span>
+                </div>
+                <p className="json-preview-statement">{q.statement || "(問題文なし)"}</p>
+                <p className="muted">{q.detail}</p>
+              </li>
+            ))}
+          </ol>
         </div>
       )}
       <p className="muted">{msg}</p>

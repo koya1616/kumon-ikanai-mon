@@ -32,6 +32,8 @@ export const App = () => {
                   <Route path="/review" element={<Review />} />
                   <Route path="/bookmarks" element={<Bookmarks />} />
                   <Route path="/admin" element={<Admin key="admin" />} />
+                  <Route path="/admin/new" element={<Admin key="admin-new" />} />
+                  <Route path="/admin/import" element={<Admin key="admin-import" />} />
                   <Route path="/admin/c/:id" element={<Admin key="admin-c" />} />
                   <Route path="/admin/t/:id" element={<Admin key="admin-t" />} />
                   <Route path="/admin/q/:id" element={<Admin key="admin-q" />} />
