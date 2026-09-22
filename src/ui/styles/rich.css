@@ -50,6 +50,8 @@
 .choice-label {
   min-width: 0;
   flex: 1;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 .choice-label.rich {
   white-space: pre-wrap;
@@ -642,7 +644,7 @@
   scroll-margin-top: calc(var(--nav-h) + 16px);
 }
 
-/* ---- bookmarks (#/bookmarks): フルブリード自習グリッド (幅制限なし) ---- */
+/* ---- bookmarks (#/bookmarks): 中央寄せの自習グリッド ---- */
 /* 星ボタン (共通): 文章量に関わらず右端に固定・潰れない・44px級タップ域 */
 .bookmark-btn {
   flex: none;
@@ -655,16 +657,21 @@
 }
 .bm-toolbar {
   position: sticky;
-  top: var(--nav-h);
+  top: calc(var(--nav-h) + 12px);
   z-index: 20;
   display: flex;
   gap: 10px;
   align-items: center;
   flex-wrap: wrap;
-  padding: 12px clamp(16px, 4vw, 64px);
+  box-sizing: border-box;
+  width: 100%;
+  padding: 12px 14px;
+  margin: 0 0 16px;
   background: color-mix(in srgb, var(--paper) 88%, transparent);
   backdrop-filter: blur(14px) saturate(1.2);
-  border-bottom: 1px solid var(--rule-soft);
+  border: 1px solid var(--rule-soft);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-1);
 }
 .bm-toolbar .search {
   flex: 1;
@@ -684,24 +691,31 @@
 }
 .bm-body {
   width: 100%;
-  padding: 20px clamp(16px, 4vw, 64px) 120px;
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  padding: 0 0 8px;
 }
 .bm-grid {
   list-style: none;
-  margin: 0 auto;
+  margin: 0;
   padding: 0;
   display: grid;
-  grid-template-columns: 1fr;
+  grid-template-columns: minmax(0, 1fr);
   gap: 16px;
   align-items: start;
-  max-width: 1400px;
+  width: 100%;
+  min-width: 0;
 }
 @media (min-width: 900px) {
   .bm-grid {
-    grid-template-columns: repeat(2, 1fr);
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 .bm-card {
+  box-sizing: border-box;
+  min-width: 0;
+  max-width: 100%;
   border: 1px solid var(--rule-soft);
   border-radius: var(--r-lg);
   background: var(--paper-2);
@@ -734,20 +748,34 @@
 }
 .bm-statement {
   margin: 0;
+  min-width: 0;
   font-size: 16px;
   font-weight: 700;
   line-height: 1.6;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+/* カード内のコードブロックはカード幅に収め、長い行は中で横スクロールさせる */
+.bm-card .code-block {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+}
+.bm-card .code-pre {
+  max-width: 100%;
 }
 .bm-choices {
   display: flex;
   flex-direction: column;
   gap: 6px;
+  min-width: 0;
 }
 .bm-choice {
   display: grid;
-  grid-template-columns: 28px 1fr auto;
+  grid-template-columns: 28px minmax(0, 1fr) auto;
   gap: 10px;
   align-items: center;
+  min-width: 0;
   padding: 9px 12px;
   border: 1.5px solid var(--rule-soft);
   border-radius: var(--r-md);
@@ -785,8 +813,11 @@
 }
 .bm-answer {
   margin: 0;
+  min-width: 0;
   font-weight: 800;
   color: var(--moegi);
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 .bm-card .exp {
   padding: 10px 12px;
@@ -794,18 +825,23 @@
   border-radius: var(--r-sm);
   white-space: pre-wrap;
   font-size: 14px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 .bm-foot {
   display: flex;
   gap: 8px;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap;
   margin-top: 2px;
 }
 .bm-solve {
   font-size: 13px;
   font-weight: 700;
   color: var(--ink-2);
+  min-width: 0;
 }
 .bm-solve:hover {
   color: var(--shu);

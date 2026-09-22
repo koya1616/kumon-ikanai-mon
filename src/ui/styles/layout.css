@@ -204,9 +204,8 @@
     max-width: none;
   }
 
-  /* ブックマークはフルブリード: シェルの幅制限を外す (bm-* が独自paddingを持つ) */
+  /* ブックマークは他ページ同様の中央寄せ幅に収める (フルブリードの横はみ出し防止) */
   .app[data-page="bookmarks"] .main {
-    max-width: none;
-    padding: 0;
+    max-width: 1080px;
   }
 }

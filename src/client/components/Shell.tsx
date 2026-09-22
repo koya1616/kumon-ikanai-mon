@@ -51,7 +51,7 @@ export const Shell = ({ children }: { children: ReactNode }) => {
   useScrollTopOnNavigate(pathname);
 
   return (
-    // CSS は data-mode="focus" で没入モード、data-page="bookmarks" でフルブリードに切り替える
+    // CSS は data-mode="focus" で没入モード、data-page="bookmarks" で中央寄せ幅に切り替える
     // /play と /review は没入モード: 解説シートとタブバーの重なりを避ける
     <div
       className="app"
