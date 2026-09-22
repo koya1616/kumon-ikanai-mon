@@ -44,13 +44,10 @@
       "explanation": "interface は extends / 宣言マージが可能。type はユニオンやプリミティブの別名に向きます。"
     },
     {
-      "statement": "`?.`（オプショナルチェーン）の効果は？",
-      "choice1": "必ず例外を投げる",
-      "choice2": "null/undefined なら短絡して undefined を返す",
-      "choice3": "型を number に変える",
-      "choice4": "非同期処理を待つ",
-      "answer": 2,
-      "explanation": "`a?.b` は a が null/undefined なら評価を止めて undefined を返します。"
+      "questionType": "order_blocks",
+      "statement": "取得したJSONを表示する非同期関数を正しい順序に並べ替えよ。",
+      "items": ["async function main() {", "const res = await fetch(url);", "const data: unknown = await res.json();", "console.log(data);", "}"],
+      "explanation": "関数宣言→fetch→json変換→表示→閉じ括弧の順です。await の順序を変えると未解決の Promise を扱ってしまいます。"
     },
     {
       "questionType": "cloze_text",

@@ -221,6 +221,6 @@ erDiagram
 ## 並べ替え運用ルール（アプリ層責務・DBでは強制しない）
 
 - `items` は正解順のブロック配列。1ブロック=1行/1単語/1コマンド断片など任意のまとまり。
-- `items` は2〜10個、各1〜500文字・空不可・版内重複なし (v1)。`is_distractor=0` 固定。
+- `items` は4〜20個、各1〜500文字・空不可・版内重複なし (根拠: `src/domain.ts` の `ORDER_MIN_ITEMS` / `ORDER_MAX_ITEMS` / `ORDER_ITEM_MAX_LENGTH`)。`is_distractor=0` 固定。
 - 出題時はサーバがシャッフルして返す (正順漏洩防止)。採点は `trim` 後完全一致・大文字小文字区別 (`exact_trim_cs`)。
 - `correct(集約) = 全位置一致時のみ1`。位置単位の正誤は明細に残し、将来の部分点・誤順分析に使う (`unified_order_position_history`)。
