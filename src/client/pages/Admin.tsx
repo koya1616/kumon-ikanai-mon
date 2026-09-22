@@ -16,10 +16,24 @@ interface Selection {
   categories: Category[];
   topics: Topic[];
   quizzes: Quiz[];
+  /** 全クイズ (概要・集計・サイドの件数表示用)。常に取得する */
+  allQuizzes: Quiz[];
   catId: number | null;
   topicId: number | null;
   quizId: number | null;
 }
+
+const isIncomplete = (q: Quiz): boolean => q.questionCount < QUESTIONS_PER_QUIZ;
+
+type QuizFilter = "all" | QuizStatus | "incomplete";
+
+const quizFilterCounts = (quizzes: Quiz[]): Record<QuizFilter, number> => ({
+  all: quizzes.length,
+  published: quizzes.filter((q) => q.status === "published").length,
+  draft: quizzes.filter((q) => q.status === "draft").length,
+  archived: quizzes.filter((q) => q.status === "archived").length,
+  incomplete: quizzes.filter(isIncomplete).length,
+});
 
 export const Admin = () => {
   const location = useLocation();
@@ -45,16 +59,20 @@ export const Admin = () => {
   const [sel, setSel] = useState<Selection | null>(null);
 
   const resolveSelection = useCallback(async () => {
-    const cats = await api<Category[]>("/api/categories");
+    const [cats, allQuizzes] = await Promise.all([
+      api<Category[]>("/api/categories"),
+      api<Quiz[]>("/api/quizzes"),
+    ]);
     const next: Selection = {
       categories: cats,
       topics: [],
       quizzes: [],
+      allQuizzes,
       catId: null,
       topicId: null,
       quizId: null,
     };
-    // JSON一括登録・新規作成は階層選択と分離した専用画面。カテゴリ一覧だけ持つ。
+    // JSON一括登録・新規作成は階層選択と分離した専用画面。カテゴリ一覧と全体集計だけ持つ。
     if (kind === "import" || kind === "new") {
       setSel(next);
       return;
@@ -62,6 +80,7 @@ export const Admin = () => {
     if (kind === "c") {
       next.catId = id;
       next.topics = await api<Topic[]>(`/api/topics?categoryId=${id}`);
+      next.quizzes = allQuizzes.filter((q) => q.categoryId === id);
     } else if (kind === "t") {
       const all = await api<Topic[]>("/api/topics");
       const t = all.find((x) => x.id === id);
@@ -69,11 +88,10 @@ export const Admin = () => {
         next.catId = t.categoryId;
         next.topicId = t.id;
         next.topics = await api<Topic[]>(`/api/topics?categoryId=${t.categoryId}`);
-        next.quizzes = await api<Quiz[]>(`/api/quizzes?topicId=${t.id}`);
+        next.quizzes = allQuizzes.filter((q) => q.topicId === t.id);
       }
     } else if (kind === "q") {
-      const all = await api<Quiz[]>("/api/quizzes");
-      const q = all.find((x) => x.id === id);
+      const q = allQuizzes.find((x) => x.id === id);
       if (q) {
         next.quizId = q.id;
         next.topicId = q.topicId;
@@ -81,7 +99,7 @@ export const Admin = () => {
         if (next.catId != null) {
           next.topics = await api<Topic[]>(`/api/topics?categoryId=${next.catId}`);
         }
-        next.quizzes = await api<Quiz[]>(`/api/quizzes?topicId=${q.topicId}`);
+        next.quizzes = allQuizzes.filter((x) => x.topicId === q.topicId);
       }
     }
     setSel(next);
@@ -96,6 +114,7 @@ export const Admin = () => {
           categories: [],
           topics: [],
           quizzes: [],
+          allQuizzes: [],
           catId: null,
           topicId: null,
           quizId: null,
@@ -185,13 +204,6 @@ export const Admin = () => {
     <div className="screen">
       <header className="admin-head">
         <span className="eyebrow">管理画面</span>
-        <h1 className="title-lg">
-          {kind === "import"
-            ? "JSONで一括登録"
-            : kind === "new"
-              ? "新規作成"
-              : "カテゴリ › トピック › クイズを管理"}
-        </h1>
         <AdminTabs kind={kind} />
         {kind !== "import" && sel && <ManageSubTabs kind={kind} sel={sel} />}
         {kind !== "import" &&
@@ -354,6 +366,21 @@ const AdminSteps = ({ sel }: { sel: Selection }) => {
 const AdminSide = ({ sel }: { sel: Selection }) => {
   const navigate = useNavigate();
   const cat = sel.categories.find((c) => c.id === sel.catId);
+  const draftByCat = new Map<number, number>();
+  const incompleteByCat = new Map<number, number>();
+  const draftByTopic = new Map<number, number>();
+  const incompleteByTopic = new Map<number, number>();
+  for (const q of sel.allQuizzes) {
+    if (q.status === "draft") {
+      if (q.categoryId != null) draftByCat.set(q.categoryId, (draftByCat.get(q.categoryId) ?? 0) + 1);
+      draftByTopic.set(q.topicId, (draftByTopic.get(q.topicId) ?? 0) + 1);
+    }
+    if (isIncomplete(q)) {
+      if (q.categoryId != null)
+        incompleteByCat.set(q.categoryId, (incompleteByCat.get(q.categoryId) ?? 0) + 1);
+      incompleteByTopic.set(q.topicId, (incompleteByTopic.get(q.topicId) ?? 0) + 1);
+    }
+  }
   return (
     <>
       <section className="card card-pad side-card" aria-label="カテゴリ一覧">
@@ -363,21 +390,37 @@ const AdminSide = ({ sel }: { sel: Selection }) => {
           </span>
           <span className="chip">{sel.categories.length}件</span>
         </div>
-        <p className="muted side-hint">大分類。選ぶとトピックが見られます</p>
+        <p className="muted side-hint">大分類。選ぶとトピックとクイズが見られます</p>
         <div className="tree-level" role="list">
-          {sel.categories.map((c) => (
-            <button
-              key={c.id}
-              type="button"
-              className="tree-item"
-              role="listitem"
-              aria-current={sel.catId === c.id ? "true" : undefined}
-              onClick={() => navigate(`/admin/c/${c.id}`)}
-            >
-              <span className="grow">{c.title}</span>
-              <span className="count">{c.quizCount ?? 0}Q</span>
-            </button>
-          ))}
+          {sel.categories.map((c) => {
+            const drafts = draftByCat.get(c.id) ?? 0;
+            const incompletes = incompleteByCat.get(c.id) ?? 0;
+            return (
+              <button
+                key={c.id}
+                type="button"
+                className="tree-item"
+                role="listitem"
+                aria-current={sel.catId === c.id ? "true" : undefined}
+                onClick={() => navigate(`/admin/c/${c.id}`)}
+                title={drafts ? `下書き${drafts}件あり` : undefined}
+              >
+                <span className="grow">
+                  {drafts > 0 && (
+                    <span className="draft-dot" aria-hidden="true">
+                      ●
+                    </span>
+                  )}
+                  {c.title}
+                </span>
+                {drafts > 0 && <span className="chip chip-yamabuki chip-xs">下書{drafts}</span>}
+                {drafts === 0 && incompletes > 0 && (
+                  <span className="chip chip-outline chip-xs">未完{incompletes}</span>
+                )}
+                <span className="count">{c.quizCount ?? 0}Q</span>
+              </button>
+            );
+          })}
           {!sel.categories.length && <p className="muted">まだありません</p>}
         </div>
       </section>
@@ -392,19 +435,35 @@ const AdminSide = ({ sel }: { sel: Selection }) => {
           </div>
           <p className="muted side-hint">「{cat?.title ?? ""}」の中分類</p>
           <div className="tree-level" role="list">
-            {sel.topics.map((t) => (
-              <button
-                key={t.id}
-                type="button"
-                className="tree-item"
-                role="listitem"
-                aria-current={sel.topicId === t.id ? "true" : undefined}
-                onClick={() => navigate(`/admin/t/${t.id}`)}
-              >
-                <span className="grow">{t.title}</span>
-                <span className="count">{t.quizCount ?? 0}Q</span>
-              </button>
-            ))}
+            {sel.topics.map((t) => {
+              const drafts = draftByTopic.get(t.id) ?? 0;
+              const incompletes = incompleteByTopic.get(t.id) ?? 0;
+              return (
+                <button
+                  key={t.id}
+                  type="button"
+                  className="tree-item"
+                  role="listitem"
+                  aria-current={sel.topicId === t.id ? "true" : undefined}
+                  onClick={() => navigate(`/admin/t/${t.id}`)}
+                  title={drafts ? `下書き${drafts}件あり` : undefined}
+                >
+                  <span className="grow">
+                    {drafts > 0 && (
+                      <span className="draft-dot" aria-hidden="true">
+                        ●
+                      </span>
+                    )}
+                    {t.title}
+                  </span>
+                  {drafts > 0 && <span className="chip chip-yamabuki chip-xs">下書{drafts}</span>}
+                  {drafts === 0 && incompletes > 0 && (
+                    <span className="chip chip-outline chip-xs">未完{incompletes}</span>
+                  )}
+                  <span className="count">{t.quizCount ?? 0}Q</span>
+                </button>
+              );
+            })}
             {!sel.topics.length && <p className="muted">まだありません</p>}
           </div>
         </section>
@@ -857,15 +916,31 @@ const QuizCreateCard = ({
   );
 };
 
-const QuizRow = ({ q, onEdit }: { q: Quiz; onEdit: (q: Quiz) => void }) => {
+const QuizRow = ({
+  q,
+  onEdit,
+  showCrumb = false,
+}: {
+  q: Quiz;
+  onEdit: (q: Quiz) => void;
+  showCrumb?: boolean;
+}) => {
   const navigate = useNavigate();
   const full = q.questionCount >= QUESTIONS_PER_QUIZ;
+  const tone = q.status === "draft" ? "is-draft" : q.status === "archived" ? "is-archived" : "";
+  const attention = q.status === "draft" || !full ? "is-attention" : "";
   return (
-    <div className="admin-quiz">
+    <div className={`admin-quiz ${tone} ${attention}`.trim()}>
       <div className="grow">
+        {showCrumb && (q.categoryTitle || q.topicTitle) && (
+          <p className="admin-quiz-crumb">
+            {[q.categoryTitle, q.topicTitle].filter(Boolean).join(" › ")}
+          </p>
+        )}
         <div className="admin-quiz-title">
           <span>{q.title}</span>
           <StatusChip status={q.status} />
+          {!full && <span className="chip chip-shu">未完成</span>}
         </div>
         <div className="admin-quiz-meta">
           <Stars n={q.difficulty} />
@@ -891,6 +966,169 @@ const QuizRow = ({ q, onEdit }: { q: Quiz; onEdit: (q: Quiz) => void }) => {
         >
           問題を編集
         </button>
+      </div>
+    </div>
+  );
+};
+
+type QuizSort = "id" | "title" | "status" | "count" | "difficulty";
+
+const QUIZ_FILTERS: { value: QuizFilter; label: string }[] = [
+  { value: "all", label: "すべて" },
+  { value: "published", label: "公開中" },
+  { value: "draft", label: "下書き" },
+  { value: "incomplete", label: "未完成" },
+  { value: "archived", label: "公開終了" },
+];
+
+const AdminQuizStats = ({
+  quizzes,
+  filter,
+  onSelect,
+}: {
+  quizzes: Quiz[];
+  filter: QuizFilter;
+  onSelect: (f: QuizFilter) => void;
+}) => {
+  const c = quizFilterCounts(quizzes);
+  const items: { value: QuizFilter; label: string; n: number; cls: string }[] = [
+    { value: "all", label: "合計", n: c.all, cls: "" },
+    { value: "published", label: "公開中", n: c.published, cls: "is-published" },
+    { value: "draft", label: "下書き", n: c.draft, cls: "is-draft" },
+    { value: "incomplete", label: "未完成", n: c.incomplete, cls: "is-incomplete" },
+    { value: "archived", label: "公開終了", n: c.archived, cls: "is-archived" },
+  ];
+  return (
+    <div className="admin-stats" role="group" aria-label="クイズの集計">
+      {items.map((it) => (
+        <button
+          key={it.value}
+          type="button"
+          className={`stat-card ${it.cls}${filter === it.value ? " is-active" : ""}`}
+          aria-pressed={filter === it.value ? "true" : "false"}
+          onClick={() => onSelect(it.value)}
+          title={`${it.label}で絞り込む`}
+        >
+          <span className="stat-num">{it.n}</span>
+          <span className="stat-label">{it.label}</span>
+        </button>
+      ))}
+    </div>
+  );
+};
+
+const AdminQuizList = ({
+  quizzes,
+  onEdit,
+  showCrumb = false,
+  storageKey,
+  emptySub = "条件に合うクイズがありません。",
+}: {
+  quizzes: Quiz[];
+  onEdit: (q: Quiz) => void;
+  showCrumb?: boolean;
+  storageKey: string;
+  emptySub?: string;
+}) => {
+  const [query, setQuery] = useState(() => sessionStorage.getItem(`admin-q-${storageKey}`) ?? "");
+  const [filter, setFilter] = useState<QuizFilter>("all");
+  const [sort, setSort] = useState<QuizSort>("id");
+  const counts = quizFilterCounts(quizzes);
+
+  const filtered = quizzes
+    .filter((q) => {
+      if (filter === "incomplete") return isIncomplete(q);
+      if (filter !== "all" && q.status !== filter) return false;
+      const v = query.trim().toLowerCase();
+      if (!v) return true;
+      return (
+        q.title.toLowerCase().includes(v) ||
+        (q.topicTitle ?? "").toLowerCase().includes(v) ||
+        (q.categoryTitle ?? "").toLowerCase().includes(v)
+      );
+    })
+    .sort((a, b) => {
+      switch (sort) {
+        case "title":
+          return a.title.localeCompare(b.title, "ja");
+        case "status":
+          // 要対応（下書き・未完成）を先頭に
+          return (
+            Number(b.status === "draft") - Number(a.status === "draft") ||
+            Number(isIncomplete(b)) - Number(isIncomplete(a)) ||
+            a.id - b.id
+          );
+        case "count":
+          return a.questionCount - b.questionCount || a.id - b.id;
+        case "difficulty":
+          return a.difficulty - b.difficulty || a.id - b.id;
+        default:
+          return a.id - b.id;
+      }
+    });
+
+  return (
+    <div className="stack">
+      <AdminQuizStats quizzes={quizzes} filter={filter} onSelect={setFilter} />
+      <div className="quiz-filter-bar">
+        <input
+          className="input quiz-search"
+          type="search"
+          placeholder="クイズ名・トピックで検索"
+          aria-label="クイズを検索"
+          value={query}
+          onChange={(e) => {
+            setQuery(e.target.value);
+            sessionStorage.setItem(`admin-q-${storageKey}`, e.target.value);
+          }}
+        />
+        <div className="quiz-filter-chips" role="group" aria-label="公開状態で絞り込み">
+          {QUIZ_FILTERS.map((f) => (
+            <button
+              key={f.value}
+              type="button"
+              className="chip chip-btn"
+              aria-pressed={filter === f.value ? "true" : "false"}
+              onClick={() => setFilter(f.value)}
+            >
+              {f.label} {counts[f.value]}
+            </button>
+          ))}
+        </div>
+        <label className="quiz-sort">
+          <span className="muted">並び順</span>
+          <select
+            className="select"
+            aria-label="並び順"
+            value={sort}
+            onChange={(e) => setSort(e.target.value as QuizSort)}
+          >
+            <option value="id">作成順</option>
+            <option value="status">要対応を先頭</option>
+            <option value="title">名前順</option>
+            <option value="count">問題数順</option>
+            <option value="difficulty">難易度順</option>
+          </select>
+        </label>
+      </div>
+      <div className="admin-quiz-list">
+        {!quizzes.length && (
+          <div className="card">
+            <EmptyState
+              glyph="問"
+              title="クイズがありません"
+              sub="「新規作成」タブからクイズを作成してください。"
+            />
+          </div>
+        )}
+        {!!quizzes.length && !filtered.length && (
+          <div className="card">
+            <EmptyState glyph="検" title="該当なし" sub={emptySub} />
+          </div>
+        )}
+        {filtered.map((q) => (
+          <QuizRow key={q.id} q={q} onEdit={onEdit} showCrumb={showCrumb} />
+        ))}
       </div>
     </div>
   );
@@ -935,13 +1173,20 @@ const AdminMain = ({
     return (
       <>
         <Crumbs items={[{ label: "管理" }]} />
-        <div className="card">
-          <EmptyState
-            glyph="管"
-            title="カテゴリを選んでください"
-            sub="左の一覧からカテゴリを選ぶと、トピック・クイズを見られます。"
-          />
+        <div className="section-head">
+          <h2 className="title-md">クイズ一覧</h2>
+          <span className="chip">{sel.allQuizzes.length}件</span>
         </div>
+        <p className="muted" style={{ marginTop: -8 }}>
+          公開状態と完成度が一目で分かります。数字・チップを押すと絞り込めます。左の一覧からカテゴリを選ぶと範囲を狭められます。
+        </p>
+        <AdminQuizList
+          key="all"
+          quizzes={sel.allQuizzes}
+          onEdit={onEditQuiz}
+          showCrumb
+          storageKey="all"
+        />
       </>
     );
   }
@@ -982,17 +1227,32 @@ const AdminMain = ({
             },
           ]}
         />
-        <div className="card">
-          <EmptyState
-            glyph="題"
-            title={sel.topics.length ? "トピックを選んでください" : "まだトピックがありません"}
-            sub={
-              sel.topics.length
-                ? "左の一覧からトピックを選ぶと、クイズを管理できます。"
-                : "「新規作成」タブから最初のトピックを作りましょう。"
-            }
-          />
-        </div>
+        {!sel.topics.length ? (
+          <div className="card">
+            <EmptyState
+              glyph="題"
+              title="まだトピックがありません"
+              sub="「新規作成」タブから最初のトピックを作りましょう。"
+            />
+          </div>
+        ) : (
+          <>
+            <div className="section-head">
+              <h2 className="title-md">「{cat.title}」のクイズ</h2>
+              <span className="chip">{sel.quizzes.length}件</span>
+            </div>
+            <p className="muted" style={{ marginTop: -8 }}>
+              カテゴリ配下の全トピックを横断表示しています。トピック名付きで見通せます。
+            </p>
+            <AdminQuizList
+              key={`cat-${cat.id}`}
+              quizzes={sel.quizzes}
+              onEdit={onEditQuiz}
+              showCrumb
+              storageKey={`cat-${cat.id}`}
+            />
+          </>
+        )}
       </>
     );
   }
@@ -1046,20 +1306,12 @@ const AdminMain = ({
         <p className="muted" style={{ marginTop: -8 }}>
           「問題を編集」で10問を登録・更新します。「設定を変更」はタイトル・難易度・公開状態の編集です。新しいクイズは「新規作成」タブから作れます。
         </p>
-        <div className="admin-quiz-list">
-          {!sel.quizzes.length && (
-            <div className="card">
-              <EmptyState
-                glyph="問"
-                title="クイズがありません"
-                sub="「新規作成」タブからクイズを作成してください。"
-              />
-            </div>
-          )}
-          {sel.quizzes.map((q) => (
-            <QuizRow key={q.id} q={q} onEdit={onEditQuiz} />
-          ))}
-        </div>
+        <AdminQuizList
+          key={`topic-${topic.id}`}
+          quizzes={sel.quizzes}
+          onEdit={onEditQuiz}
+          storageKey={`topic-${topic.id}`}
+        />
       </>
     );
   }

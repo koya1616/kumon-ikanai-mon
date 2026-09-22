@@ -361,6 +361,132 @@
     gap: 8px;
     flex-wrap: wrap;
   }
+  .admin-quiz-crumb {
+    margin: 0 0 2px;
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--ink-3);
+    letter-spacing: 0.02em;
+  }
+  /* 要対応 (下書き or 未完成) は左アクセントで一目で分かるように */
+  .admin-quiz.is-attention {
+    border-left: 5px solid var(--yamabuki);
+  }
+  .admin-quiz.is-draft {
+    background: color-mix(in srgb, var(--yamabuki-soft) 35%, var(--paper-2));
+  }
+  .admin-quiz.is-archived {
+    opacity: 0.75;
+  }
+  /* 集計カード: 押すとその状態で絞り込める */
+  .admin-stats {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 8px;
+  }
+  @media (max-width: 640px) {
+    .admin-stats {
+      grid-template-columns: repeat(3, 1fr);
+    }
+  }
+  .stat-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    padding: 10px 8px;
+    border-radius: var(--r-md);
+    background: var(--paper-2);
+    border: 1.5px solid var(--rule-soft);
+    color: inherit;
+  }
+  .stat-card:hover {
+    border-color: var(--rule);
+  }
+  .stat-card.is-active {
+    border-color: var(--ink);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--ink) 12%, transparent);
+  }
+  .stat-num {
+    font-size: 22px;
+    font-weight: 800;
+    line-height: 1.1;
+  }
+  .stat-label {
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--ink-3);
+  }
+  .stat-card.is-draft {
+    border-left: 5px solid var(--yamabuki);
+  }
+  .stat-card.is-draft .stat-num {
+    color: color-mix(in srgb, var(--yamabuki) 70%, var(--ink));
+  }
+  .stat-card.is-incomplete {
+    border-left: 5px solid var(--shu);
+  }
+  .stat-card.is-incomplete .stat-num {
+    color: var(--shu);
+  }
+  .stat-card.is-published .stat-num {
+    color: var(--moegi);
+  }
+  /* 絞り込みバー: 検索 + 状態チップ + 並び順 */
+  .quiz-filter-bar {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 12px;
+    background: var(--paper-2);
+    border: 1px solid var(--rule-soft);
+    border-radius: var(--r-md);
+  }
+  .quiz-search {
+    width: 100%;
+  }
+  .quiz-filter-chips {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+  .quiz-sort {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+  }
+  .quiz-sort .select {
+    flex: 1;
+  }
+  @media (min-width: 760px) {
+    .quiz-filter-bar {
+      flex-direction: row;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+    .quiz-search {
+      width: 240px;
+      flex: none;
+    }
+    .quiz-filter-chips {
+      flex: 1;
+    }
+    .quiz-sort .select {
+      width: 160px;
+      flex: none;
+    }
+  }
+  /* サイドの下書きドット + ミニチップ */
+  .draft-dot {
+    color: var(--yamabuki);
+    font-size: 10px;
+    margin-right: 4px;
+  }
+  .chip-xs {
+    font-size: 10px;
+    padding: 2px 7px;
+  }
   .admin-quiz-meta {
     display: flex;
     gap: 8px;
