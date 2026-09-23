@@ -10,6 +10,9 @@ interface PreviewQuestion {
   kind: "4択" | "穴埋め" | "並べ替え";
   statement: string;
   detail: string;
+  choices: string[];
+  answer: number | null;
+  explanation: string;
 }
 
 interface ParsedSummary {
@@ -26,6 +29,7 @@ const previewOne = (q: unknown, index: number): PreviewQuestion => {
   const no = index + 1;
   const rec = (q ?? {}) as Record<string, unknown>;
   const statement = toText(rec.statement);
+  const explanation = toText(rec.explanation);
   if (rec.questionType === "cloze_text") {
     const answers = Array.isArray(rec.answers) ? rec.answers.map(toText).filter(Boolean) : [];
     return {
@@ -33,6 +37,9 @@ const previewOne = (q: unknown, index: number): PreviewQuestion => {
       kind: "穴埋め",
       statement,
       detail: answers.length ? `正答: ${answers.join(" / ")}` : "正答: (なし)",
+      choices: [],
+      answer: null,
+      explanation,
     };
   }
   if (rec.questionType === "order_blocks") {
@@ -42,17 +49,23 @@ const previewOne = (q: unknown, index: number): PreviewQuestion => {
       kind: "並べ替え",
       statement,
       detail: items.length ? `${items.length}ブロック: ${items.join(" → ")}` : "ブロック: (なし)",
+      choices: [],
+      answer: null,
+      explanation,
     };
   }
   const answer = Number(rec.answer);
+  const choices = [rec.choice1, rec.choice2, rec.choice3, rec.choice4].map(toText);
+  const validAnswer =
+    Number.isInteger(answer) && answer >= 1 && answer <= 4 ? answer : null;
   return {
     no,
     kind: "4択",
     statement,
-    detail:
-      Number.isInteger(answer) && answer >= 1 && answer <= 4
-        ? `正答: 選択肢${answer}`
-        : "正答: (なし)",
+    detail: validAnswer != null ? `正答: 選択肢${validAnswer}` : "正答: (なし)",
+    choices,
+    answer: validAnswer,
+    explanation,
   };
 };
 
@@ -244,7 +257,26 @@ export const JsonImportCard = () => {
                   <span className="chip">{q.kind}</span>
                 </div>
                 <p className="json-preview-statement">{q.statement || "(問題文なし)"}</p>
+                {q.choices.length > 0 && (
+                  <ul className="json-preview-choices" aria-label="回答の選択肢">
+                    {q.choices.map((c, i) => {
+                      const n = i + 1;
+                      const isCorrect = q.answer === n;
+                      return (
+                        <li
+                          key={n}
+                          className={isCorrect ? "is-correct" : undefined}
+                          aria-label={`選択肢${n}${isCorrect ? " (正答)" : ""}`}
+                        >
+                          <span className="tnum">{n}.</span> {c || "(空)"}
+                          {isCorrect && <span className="chip chip-moegi chip-xs">正答</span>}
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
                 <p className="muted">{q.detail}</p>
+                {q.explanation && <p className="muted">解説: {q.explanation}</p>}
               </li>
             ))}
           </ol>

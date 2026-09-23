@@ -177,6 +177,23 @@
     font-weight: 600;
     white-space: pre-wrap;
   }
+  .json-preview-choices {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    margin: 4px 0 0;
+    padding: 0;
+    list-style: none;
+  }
+  .json-preview-choices li {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 2px 0;
+  }
+  .json-preview-choices li.is-correct {
+    font-weight: 700;
+  }
   .json-preview-item .muted {
     margin: 0;
   }
