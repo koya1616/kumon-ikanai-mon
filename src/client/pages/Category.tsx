@@ -96,9 +96,18 @@ export const Category = () => {
           {blocks.length > 1 && (
             <nav className="cat-topic-nav" aria-label="トピック">
               {blocks.map(({ topic, quizzes }) => (
-                <a key={topic.id} className="chip chip-btn" href={`#topic-${topic.id}`}>
+                <button
+                  key={topic.id}
+                  type="button"
+                  className="chip chip-btn"
+                  onClick={() =>
+                    document
+                      .getElementById(`topic-${topic.id}`)
+                      ?.scrollIntoView({ behavior: "smooth", block: "start" })
+                  }
+                >
                   {topic.title} · {quizzes.length}
-                </a>
+                </button>
               ))}
             </nav>
           )}

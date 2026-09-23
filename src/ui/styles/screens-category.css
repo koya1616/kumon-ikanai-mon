@@ -65,6 +65,7 @@
 
   .topic-block {
     margin-bottom: 28px;
+    scroll-margin-top: calc(var(--nav-h) + 12px);
   }
   .topic-head {
     display: flex;
