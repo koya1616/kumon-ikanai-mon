@@ -1592,6 +1592,10 @@ export interface RecentAttempt extends Attempt {
   topicTitle: string;
   categoryId: number;
   categoryTitle: string;
+  /** そのクイズで何回目の完了挑戦か (古い順の通し番号) */
+  attemptNumber: number;
+  /** そのクイズの完了挑戦の累計回数 */
+  attemptCount: number;
 }
 
 export async function listRecentAttempts(db: DB, limit: number): Promise<RecentAttempt[]> {
@@ -1604,7 +1608,11 @@ export async function listRecentAttempts(db: DB, limit: number): Promise<RecentA
         END AS "durationSec",
         q.title AS "quizTitle",
         t.id AS "topicId", t.title AS "topicTitle",
-        c.id AS "categoryId", c.title AS "categoryTitle"
+        c.id AS "categoryId", c.title AS "categoryTitle",
+        (SELECT COUNT(*) FROM attempts a2
+          WHERE a2.quiz_id = a.quiz_id AND a2.completed_at IS NOT NULL AND a2.id <= a.id) AS "attemptNumber",
+        (SELECT COUNT(*) FROM attempts a3
+          WHERE a3.quiz_id = a.quiz_id AND a3.completed_at IS NOT NULL) AS "attemptCount"
        FROM attempts a
        JOIN quizzes q ON q.id = a.quiz_id
        JOIN topics t ON t.id = q.topic_id
@@ -1617,6 +1625,8 @@ export async function listRecentAttempts(db: DB, limit: number): Promise<RecentA
   return results.map((r) => ({
     ...r,
     durationSec: r.durationSec === null ? null : Number(r.durationSec),
+    attemptNumber: Number(r.attemptNumber),
+    attemptCount: Number(r.attemptCount),
   }));
 }
 

@@ -163,6 +163,10 @@ export interface AttemptHistoryItem extends AttemptRecord {
   topicTitle: string;
   categoryId: number;
   categoryTitle: string;
+  /** そのクイズで何回目の完了挑戦か (古い順の通し番号) */
+  attemptNumber: number;
+  /** そのクイズの完了挑戦の累計回数 */
+  attemptCount: number;
 }
 
 export interface AttemptDetailItem {

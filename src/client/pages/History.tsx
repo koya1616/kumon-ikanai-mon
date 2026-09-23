@@ -214,6 +214,7 @@ export const History = () => {
                 <AttemptPanel
                   attempts={attempts}
                   current={current}
+                  attemptCount={insights.attemptCount}
                   ordinalOf={ordinalOf}
                   onSelect={setSelectedId}
                 />
@@ -508,15 +509,18 @@ const QuestionRow = ({
 const AttemptPanel = ({
   attempts,
   current,
+  attemptCount,
   ordinalOf,
   onSelect,
 }: {
   attempts: AttemptRecord[];
   current: AttemptRecord;
+  attemptCount: number;
   ordinalOf: (idx: number) => number;
   onSelect: (attemptId: number) => void;
 }) => {
   const idx = attempts.findIndex((a) => a.id === current.id);
+  const ordinal = ordinalOf(idx);
   const older = attempts[idx + 1];
   const newer = attempts[idx - 1];
   const [cache, setCache] = useState<Record<number, AttemptDetail>>({});
@@ -603,7 +607,7 @@ const AttemptPanel = ({
             <small>/{current.total}</small>
           </strong>
           <span className="muted">
-            <HistDate value={current.completedAt} />
+            第{ordinal}回/全{attemptCount}回 · <HistDate value={current.completedAt} />
             {current.durationSec !== null && current.durationSec !== undefined && (
               <> · {fmtDuration(current.durationSec)}</>
             )}

@@ -232,7 +232,7 @@ const HistoryTabs = ({ items }: { items: AttemptHistoryItem[] }) => {
                   <div className="grow">
                     <div style={{ fontWeight: 700 }}>{r.quizTitle}</div>
                     <div className="muted">
-                      {`${r.categoryTitle} › ${r.topicTitle} · `}
+                      {`第${r.attemptNumber}回/全${r.attemptCount}回 · ${r.categoryTitle} › ${r.topicTitle} · `}
                       <HistDate value={r.completedAt} />
                       {r.durationSec !== null && r.durationSec !== undefined && (
                         <> · {fmtDuration(r.durationSec)}</>
