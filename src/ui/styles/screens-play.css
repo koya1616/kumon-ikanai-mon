@@ -13,17 +13,31 @@
     display: flex;
     align-items: center;
     gap: 12px;
+    min-width: 0;
     padding: calc(10px + env(safe-area-inset-top)) 12px 10px;
     background: color-mix(in srgb, var(--paper) 90%, transparent);
     backdrop-filter: blur(12px);
   }
+  .play-top .chip {
+    flex: none;
+    min-width: 0;
+    max-width: 46vw;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .play-status-short {
+    display: none;
+  }
   .play-dots {
-    flex: 1;
+    flex: 1 1 0%;
     display: flex;
     gap: 4px;
+    min-width: 0;
   }
   .play-dot {
-    flex: 1;
+    flex: 1 1 0%;
+    min-width: 0;
     height: 6px;
     border-radius: 3px;
     background: var(--rule-soft);
@@ -44,7 +58,34 @@
     font-variant-numeric: tabular-nums;
     color: var(--ink-2);
     min-width: 44px;
+    flex: none;
     text-align: right;
+  }
+  /* SP: ヘッダ1行を維持し、はみ出しを防ぐ (チップ短縮・ドット縮小) */
+  @media (max-width: 480px) {
+    .play-top {
+      gap: 8px;
+      padding-left: 8px;
+      padding-right: 8px;
+    }
+    .play-top .chip {
+      font-size: 11px;
+      padding: 3px 8px;
+      max-width: 34vw;
+    }
+    .play-status-full {
+      display: none;
+    }
+    .play-status-short {
+      display: inline;
+    }
+    .play-dots {
+      gap: 3px;
+    }
+    .play-count {
+      min-width: 0;
+      font-size: 12px;
+    }
   }
 
   .play-body {

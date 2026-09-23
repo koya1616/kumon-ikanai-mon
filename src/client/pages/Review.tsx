@@ -423,7 +423,10 @@ export const Review = () => {
     <div className="screen">
       <div className="play">
         <div className="play-top">
-          <span className="chip chip-shu">練習中 · 復習記録に残ります</span>
+          <span className="chip chip-shu">
+            <span className="play-status-full">練習中 · 復習記録に残ります</span>
+            <span className="play-status-short">練習中</span>
+          </span>
           <div className="play-dots" aria-hidden="true">
             {order.map((o, i) => {
               const p = picks[o.questionVersionId];
