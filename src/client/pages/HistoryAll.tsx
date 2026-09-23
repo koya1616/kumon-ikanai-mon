@@ -1,26 +1,84 @@
-// クイズ横断の挑戦履歴ページ (/history)。完了した挑戦を新しい順に並べる。
-// 問題単位の掘り下げはクイズ別履歴 (/h/:id) に寄せ、ここでは回遊用の目次に徹する。
+// クイズ横断の挑戦履歴ページ (/history)。クイズ単位の目次に徹する。
+// カテゴリ / トピックのタブは持たず、クイズだけを検索・並べ替えして探せる。
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router";
 import { api, fmtDuration } from "../api";
 import type { AttemptHistoryItem } from "../api";
-import { EmptyState, Icon, Skeletons } from "../ui";
-import { BackButton, Tabs } from "../components/feedback";
-import { barToneOf, pctOf } from "../lib/display";
+import { EmptyState, Skeletons } from "../ui";
+import { BackButton, SearchBox } from "../components/feedback";
+import { barToneOf, fmtDateTimeFull, pctOf } from "../lib/display";
 import { historyHref, playHref } from "../lib/links";
-import { HistDate } from "./History";
 
 type LoadState =
   | { name: "loading" }
   | { name: "error"; message: string }
   | { name: "ready"; items: AttemptHistoryItem[] };
 
+type SortKey = "latest" | "oldest" | "count" | "weak" | "name";
+
+const SORTS: { id: SortKey; label: string }[] = [
+  { id: "latest", label: "最新順" },
+  { id: "oldest", label: "古い順" },
+  { id: "count", label: "回数が多い順" },
+  { id: "weak", label: "ベストが低い順" },
+  { id: "name", label: "名前順" },
+];
+
+interface QuizGroup {
+  quizId: number;
+  quizTitle: string;
+  categoryTitle: string;
+  topicTitle: string;
+  attempts: AttemptHistoryItem[];
+  count: number;
+  latest: AttemptHistoryItem;
+  best: number;
+  bestTotal: number;
+  bestPct: number;
+  avgPct: number;
+}
+
+const groupByQuiz = (items: AttemptHistoryItem[]): QuizGroup[] => {
+  const map = new Map<number, AttemptHistoryItem[]>();
+  for (const r of items) {
+    const arr = map.get(r.quizId);
+    if (arr) arr.push(r);
+    else map.set(r.quizId, [r]);
+  }
+  return [...map.values()].flatMap((attempts) => {
+    // items は新しい順なので先頭が最新
+    const latest = attempts[0];
+    if (!latest) return [];
+    let best = latest;
+    let sum = 0;
+    for (const a of attempts) {
+      sum += pctOf(a.score, a.total);
+      if (pctOf(a.score, a.total) > pctOf(best.score, best.total)) best = a;
+    }
+    return {
+      quizId: latest.quizId,
+      quizTitle: latest.quizTitle,
+      categoryTitle: latest.categoryTitle,
+      topicTitle: latest.topicTitle,
+      attempts,
+      count: attempts.length,
+      latest,
+      best: best.score,
+      bestTotal: best.total,
+      bestPct: pctOf(best.score, best.total),
+      avgPct: attempts.length ? sum / attempts.length : 0,
+    };
+  });
+};
+
 export const HistoryAll = () => {
   const [state, setState] = useState<LoadState>({ name: "loading" });
+  const [query, setQuery] = useState("");
+  const [sort, setSort] = useState<SortKey>("latest");
 
   useEffect(() => {
     let alive = true;
-    api<AttemptHistoryItem[]>(`/api/attempts/recent?limit=50`)
+    api<AttemptHistoryItem[]>(`/api/attempts/recent?limit=100`)
       .then((rows) => {
         if (alive) setState({ name: "ready", items: rows ?? [] });
       })
@@ -34,9 +92,9 @@ export const HistoryAll = () => {
 
   if (state.name === "loading") {
     return (
-      <div className="screen">
-        <div className="hist-body">
-          <Skeletons n={4} />
+      <div className="screen history-all-screen">
+        <div className="ha-body">
+          <Skeletons n={6} />
         </div>
       </div>
     );
@@ -44,8 +102,8 @@ export const HistoryAll = () => {
 
   if (state.name === "error") {
     return (
-      <div className="screen">
-        <div className="hist-body">
+      <div className="screen history-all-screen">
+        <div className="ha-body ha-body-narrow">
           <div className="card card-pad">
             <EmptyState glyph="！" title="履歴を取得できません" sub={state.message} />
           </div>
@@ -57,12 +115,73 @@ export const HistoryAll = () => {
     );
   }
 
-  const { items } = state;
-
   return (
-    <div className="screen">
-      <div className="hist-body">
-        {!items.length ? (
+    <HistoryQuizList
+      items={state.items}
+      query={query}
+      sort={sort}
+      onQuery={setQuery}
+      onSort={setSort}
+    />
+  );
+};
+
+const HistoryQuizList = ({
+  items,
+  query,
+  sort,
+  onQuery,
+  onSort,
+}: {
+  items: AttemptHistoryItem[];
+  query: string;
+  sort: SortKey;
+  onQuery: (v: string) => void;
+  onSort: (v: SortKey) => void;
+}) => {
+  const groups = useMemo(() => groupByQuiz(items), [items]);
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    const hit = q
+      ? groups.filter((g) =>
+          `${g.quizTitle} ${g.categoryTitle} ${g.topicTitle}`.toLowerCase().includes(q),
+        )
+      : groups;
+    const sorted = [...hit];
+    switch (sort) {
+      case "count":
+        sorted.sort((a, b) => b.count - a.count);
+        break;
+      case "weak":
+        sorted.sort((a, b) => a.bestPct - b.bestPct);
+        break;
+      case "name":
+        sorted.sort((a, b) => a.quizTitle.localeCompare(b.quizTitle, "ja"));
+        break;
+      case "latest":
+        sorted.sort((a, b) =>
+          (b.latest.completedAt ?? "").localeCompare(a.latest.completedAt ?? ""),
+        );
+        break;
+      case "oldest":
+        sorted.sort((a, b) =>
+          (a.latest.completedAt ?? "").localeCompare(b.latest.completedAt ?? ""),
+        );
+        break;
+      default:
+        sorted.sort((a, b) =>
+          (b.latest.completedAt ?? "").localeCompare(a.latest.completedAt ?? ""),
+        );
+        break;
+    }
+    return sorted;
+  }, [groups, query, sort]);
+
+  if (!groups.length) {
+    return (
+      <div className="screen history-all-screen">
+        <div className="ha-body ha-body-narrow">
           <div className="card card-pad">
             <EmptyState
               glyph="空"
@@ -70,195 +189,129 @@ export const HistoryAll = () => {
               sub="クイズに挑戦して完了するとここに記録が残ります。"
             />
           </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="screen history-all-screen">
+      <div className="ha-body">
+        <div className="ha-toolbar" role="search">
+          <div className="ha-search">
+            <SearchBox
+              value={query}
+              onChange={onQuery}
+              placeholder="クイズ名で検索"
+              ariaLabel="クイズ名で履歴を検索"
+            />
+          </div>
+          <label className="ha-sort">
+            <span className="ha-sort-label">並べ替え</span>
+            <select
+              value={sort}
+              onChange={(e) => onSort(e.target.value as SortKey)}
+              aria-label="クイズの並べ替え"
+            >
+              {SORTS.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <span className="ha-count tnum" aria-live="polite">
+            {filtered.length}件
+          </span>
+        </div>
+
+        {!filtered.length ? (
+          <div className="card card-pad">
+            <EmptyState
+              glyph="無"
+              title="該当するクイズがありません"
+              sub="検索条件を変えて探してみてください。"
+            />
+          </div>
         ) : (
-          <HistoryTabs items={items} />
+          <ol className="ha-grid">
+            {filtered.map((g) => (
+              <QuizCard key={g.quizId} group={g} />
+            ))}
+          </ol>
         )}
       </div>
     </div>
   );
 };
 
-/** 履歴のタブ切り替え: カテゴリ一覧 / トピック一覧 / クイズ一覧 (履歴があるものだけ)。
- * 項目タップでその場で履歴を絞り込む。 */
-type HistoryTab = "categories" | "topics" | "quizzes";
-
-interface HistoryGroup {
-  id: number;
-  title: string;
-  parentTitle: string;
-  count: number;
-  latest: AttemptHistoryItem;
-  best: number;
-  bestTotal: number;
-}
-
-const groupItems = (items: AttemptHistoryItem[]) => {
-  const cats = new Map<number, HistoryGroup>();
-  const topics = new Map<number, HistoryGroup>();
-  const quizzes = new Map<number, HistoryGroup>();
-  for (const r of items) {
-    const put = (m: Map<number, HistoryGroup>, id: number, title: string, parentTitle: string) => {
-      const g = m.get(id);
-      if (!g) {
-        m.set(id, {
-          id,
-          title,
-          parentTitle,
-          count: 1,
-          latest: r,
-          best: r.score,
-          bestTotal: r.total,
-        });
-      } else {
-        g.count++;
-        if (r.score / Math.max(1, r.total) > g.best / Math.max(1, g.bestTotal)) {
-          g.best = r.score;
-          g.bestTotal = r.total;
-        }
-      }
-    };
-    put(cats, r.categoryId, r.categoryTitle, "");
-    put(topics, r.topicId, r.topicTitle, r.categoryTitle);
-    put(quizzes, r.quizId, r.quizTitle, `${r.categoryTitle} › ${r.topicTitle}`);
-  }
-  return {
-    // items は新しい順なので Map 挿入順 = 最新順になる
-    categories: [...cats.values()],
-    topics: [...topics.values()],
-    quizzes: [...quizzes.values()],
-  };
-};
-
-const HistoryTabs = ({ items }: { items: AttemptHistoryItem[] }) => {
-  const [tab, setTab] = useState<HistoryTab>("categories");
-  const [sel, setSel] = useState<{ tab: HistoryTab; id: number } | null>(null);
-  const groups = useMemo(() => groupItems(items), [items]);
-
-  const list =
-    tab === "categories" ? groups.categories : tab === "topics" ? groups.topics : groups.quizzes;
-
-  const selectedGroup = sel && sel.tab === tab ? (list.find((g) => g.id === sel.id) ?? null) : null;
-
-  const filtered = selectedGroup
-    ? items.filter((r) =>
-        tab === "categories"
-          ? r.categoryId === selectedGroup.id
-          : tab === "topics"
-            ? r.topicId === selectedGroup.id
-            : r.quizId === selectedGroup.id,
-      )
-    : items;
-
-  const switchTab = (t: HistoryTab) => {
-    setTab(t);
-    setSel(null);
-  };
-  const toggle = (g: HistoryGroup) => {
-    setSel((cur) => (cur && cur.tab === tab && cur.id === g.id ? null : { tab, id: g.id }));
-  };
+const QuizCard = ({ group: g }: { group: QuizGroup }) => {
+  const pct = pctOf(g.best, g.bestTotal);
+  const tone = pct >= 0.7 ? "is-good" : pct >= 0.4 ? "is-mid" : "is-bad";
+  // 古い→新しい順に最大12件のミニ推移
+  const trend = [...g.attempts].reverse().slice(-12);
 
   return (
-    <section aria-label="履歴の一覧切り替え">
-      <Tabs
-        tabs={[
-          { id: "categories", label: `カテゴリ(${groups.categories.length})` },
-          { id: "topics", label: `トピック(${groups.topics.length})` },
-          { id: "quizzes", label: `クイズ(${groups.quizzes.length})` },
-        ]}
-        active={tab}
-        onChange={switchTab}
-      />
-      <div role="tabpanel" style={{ marginBottom: 20 }}>
-        {list.length ? (
-          <div className="cat-grid">
-            {list.map((g) => {
-              const active = selectedGroup?.id === g.id;
-              return (
-                <button
-                  key={g.id}
-                  type="button"
-                  className="cat-card"
-                  aria-pressed={active}
-                  onClick={() => toggle(g)}
-                >
-                  <div className="cat-card-body">
-                    {g.parentTitle && <div className="muted">{g.parentTitle}</div>}
-                    <div className="cat-card-title">{g.title}</div>
-                    <div className="cat-card-meta">
-                      {g.count}回挑戦 · 最高 {g.best}/{g.bestTotal} · 最新{" "}
-                      <HistDate value={g.latest.completedAt} />
-                    </div>
-                  </div>
-                  {active ? (
-                    <span className="chip chip-shu">絞り込み中</span>
-                  ) : (
-                    <span className="chip">{g.count}件</span>
-                  )}
-                </button>
-              );
-            })}
-          </div>
-        ) : (
-          <div className="card card-pad">
-            <EmptyState glyph="無" title="該当する履歴がありません" />
-          </div>
-        )}
-      </div>
-      {selectedGroup && (
-        <div className="row wrap mb between">
-          <div className="title-md">
-            {selectedGroup.title} <span className="muted">({filtered.length}件)</span>
-          </div>
-          <button type="button" className="btn btn-sm" onClick={() => setSel(null)}>
-            絞り込みをクリア
-          </button>
-        </div>
-      )}
-      {!filtered.length ? (
-        <div className="card card-pad">
-          <EmptyState glyph="無" title="該当する履歴がありません" />
-        </div>
-      ) : (
-        <ol className="recent-list">
-          {filtered.map((r) => {
-            const pct = pctOf(r.score, r.total);
+    <li className="ha-card">
+      <div className="ha-card-top">
+        <p className="ha-crumb muted">
+          {g.categoryTitle} › {g.topicTitle}
+        </p>
+        <Link
+          className="ha-title"
+          to={historyHref(g.quizId)}
+          aria-label={`${g.quizTitle}の履歴詳細を見る`}
+        >
+          {g.quizTitle}
+        </Link>
+        <p className="ha-meta">
+          <span className={`ha-pill ${tone}`}>
+            ベスト {g.best}/{g.bestTotal}
+          </span>
+          <span>{g.count}回挑戦</span>
+          <span>
+            <HistDateTime value={g.latest.completedAt} />
+          </span>
+        </p>
+        <div className="ha-trend" aria-hidden="true" title="直近のスコア推移">
+          {trend.map((a) => {
+            const p = pctOf(a.score, a.total);
             return (
-              <li key={r.id} className="recent-item">
-                <Link
-                  className="recent-main"
-                  to={playHref(r.quizId)}
-                  aria-label={`${r.quizTitle}に挑戦する`}
-                >
-                  <div className="grow">
-                    <div style={{ fontWeight: 700 }}>{r.quizTitle}</div>
-                    <div className="muted">
-                      {`第${r.attemptNumber}回/全${r.attemptCount}回 · ${r.categoryTitle} › ${r.topicTitle} · `}
-                      <HistDate value={r.completedAt} />
-                      {r.durationSec !== null && r.durationSec !== undefined && (
-                        <> · {fmtDuration(r.durationSec)}</>
-                      )}
-                    </div>
-                    <div className="history-bar" aria-hidden="true" style={{ maxWidth: 220 }}>
-                      <i className={barToneOf(pct)} style={{ width: `${pct * 100}%` }} />
-                    </div>
-                  </div>
-                  <div className="recent-score tnum">
-                    {r.score}/{r.total}
-                  </div>
-                  <Icon name="arrow" />
-                </Link>
-                <Link
-                  className="btn btn-sm btn-ghost"
-                  to={historyHref(r.quizId)}
-                  aria-label={`${r.quizTitle}の履歴を見る`}
-                >
-                  履歴
-                </Link>
-              </li>
+              <span key={a.id} className="ha-trend-bar">
+                <i className={barToneOf(p)} style={{ height: `${Math.round(p * 100)}%` }} />
+              </span>
             );
           })}
-        </ol>
-      )}
-    </section>
+        </div>
+        <div className="history-bar ha-bar" aria-hidden="true">
+          <i className={barToneOf(pct)} style={{ width: `${Math.round(pct * 100)}%` }} />
+        </div>
+        <p className="ha-sub muted">
+          第{g.latest.attemptNumber}回/全{g.latest.attemptCount}回 · {g.latest.score}/
+          {g.latest.total}
+          {g.latest.durationSec != null && <> · {fmtDuration(g.latest.durationSec)}</>}
+        </p>
+      </div>
+      <div className="ha-card-foot">
+        <Link
+          className="btn btn-sm"
+          to={historyHref(g.quizId)}
+          aria-label={`${g.quizTitle}の履歴詳細を見る`}
+        >
+          履歴を見る
+        </Link>
+        <Link
+          className="btn btn-sm btn-ink"
+          to={playHref(g.quizId)}
+          aria-label={`${g.quizTitle}に挑戦する`}
+        >
+          挑戦する
+        </Link>
+      </div>
+    </li>
   );
 };
+
+const HistDateTime = ({ value }: { value: string | null }) => (
+  <span>最新 {fmtDateTimeFull(value) || "—"}</span>
+);

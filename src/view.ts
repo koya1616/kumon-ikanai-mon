@@ -18,6 +18,7 @@ import screensHome from "./ui/styles/screens-home.css";
 import screensCategory from "./ui/styles/screens-category.css";
 import screensPlay from "./ui/styles/screens-play.css";
 import screensResult from "./ui/styles/screens-result.css";
+import screensHistoryAll from "./ui/styles/screens-history-all.css";
 import screensAdmin from "./ui/styles/screens-admin.css";
 import utilities from "./ui/styles/utilities.css";
 import rich from "./ui/styles/rich.css";
@@ -52,6 +53,7 @@ const appStyles: string = bundleStyles([
   screensCategory,
   screensPlay,
   screensResult,
+  screensHistoryAll,
   screensAdmin,
   utilities,
   rich,
