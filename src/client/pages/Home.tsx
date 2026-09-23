@@ -19,7 +19,7 @@ const useMistakeCount = (): number | null => {
   const [mistakeCount, setMistakeCount] = useState<number | null>(null);
   useEffect(() => {
     let alive = true;
-    api<{ items: unknown[] }>(`/api/review/mistakes?limit=30`)
+    api<{ items: unknown[] }>(`/api/review/mistakes`)
       .then((d) => {
         if (alive) setMistakeCount((d.items ?? []).length);
       })

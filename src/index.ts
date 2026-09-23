@@ -539,24 +539,17 @@ async function route(req: Request, env: Env): Promise<Response> {
   }
 
   // 苦手一括復習 (練習扱い・attempts系と完全分離。ベスト・サマリーに影響しない)。
-  // GET: 直近REVIEW_CLEAR_STREAK件が全正解のものは解消扱いで除外して返す。
+  // GET: 直近REVIEW_CLEAR_STREAK件が全正解のものは解消扱いで除外して全件返す。順序はランダム。
   if (path === "/api/review/mistakes" && method === "GET") {
     const v = validated(
       z
         .object({
           quizId: idParamSchema.optional(),
           categoryId: idParamSchema.optional(),
-          limit: z.coerce
-            .number()
-            .int()
-            .min(1, { message: "limitは1-100で指定してください" })
-            .max(100, { message: "limitは1-100で指定してください" })
-            .optional(),
         })
         .safeParse({
           quizId: url.searchParams.get("quizId") ?? undefined,
           categoryId: url.searchParams.get("categoryId") ?? undefined,
-          limit: url.searchParams.get("limit") ?? undefined,
         }),
     );
     if ("res" in v) return v.res;

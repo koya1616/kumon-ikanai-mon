@@ -71,9 +71,9 @@ export const History = () => {
       api<AttemptRecord[]>(`/api/quizzes/${quizId}/attempts?limit=50`),
       api<QuizInsights>(`/api/quizzes/${quizId}/insights`),
       // 復習導線の件数表示用。失敗しても本体は出す
-      api<{ items: MistakeItem[] }>(`/api/review/mistakes?quizId=${quizId}&limit=100`).catch(
-        () => ({ items: [] }),
-      ),
+      api<{ items: MistakeItem[] }>(`/api/review/mistakes?quizId=${quizId}`).catch(() => ({
+        items: [],
+      })),
     ])
       .then(([meta, rows, insights, mistakes]) => {
         if (!alive) return;

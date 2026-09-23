@@ -266,21 +266,25 @@ export interface NewOrderQuestion {
 async function loadClozeBlanks(db: DB, versionIds: number[]): Promise<Map<number, ClozeBlank[]>> {
   const out = new Map<number, ClozeBlank[]>();
   if (!versionIds.length) return out;
-  const placeholders = versionIds.map(() => "?").join(",");
-  const { results } = await db
-    .prepare(
-      `SELECT b.question_version_id AS "versionId", b.blank_index AS "blankIndex",
-        (SELECT a.answer_text FROM question_cloze_answers a
-          WHERE a.blank_id = b.id ORDER BY a.sort_order, a.id LIMIT 1) AS "answer"
-       FROM question_cloze_blanks b
-       WHERE b.question_version_id IN (${placeholders}) ORDER BY b.question_version_id, b.blank_index`,
-    )
-    .bind(...versionIds)
-    .all<{ versionId: number; blankIndex: number; answer: string | null }>();
-  for (const r of results) {
-    const arr = out.get(r.versionId) ?? [];
-    arr.push({ index: Number(r.blankIndex), answer: r.answer ?? "" });
-    out.set(r.versionId, arr);
+  // 全件復習で件数が増えてもバインド上限を踏まないよう分割取得する
+  for (let i = 0; i < versionIds.length; i += 50) {
+    const chunk = versionIds.slice(i, i + 50);
+    const placeholders = chunk.map(() => "?").join(",");
+    const { results } = await db
+      .prepare(
+        `SELECT b.question_version_id AS "versionId", b.blank_index AS "blankIndex",
+          (SELECT a.answer_text FROM question_cloze_answers a
+            WHERE a.blank_id = b.id ORDER BY a.sort_order, a.id LIMIT 1) AS "answer"
+         FROM question_cloze_blanks b
+         WHERE b.question_version_id IN (${placeholders}) ORDER BY b.question_version_id, b.blank_index`,
+      )
+      .bind(...chunk)
+      .all<{ versionId: number; blankIndex: number; answer: string | null }>();
+    for (const r of results) {
+      const arr = out.get(r.versionId) ?? [];
+      arr.push({ index: Number(r.blankIndex), answer: r.answer ?? "" });
+      out.set(r.versionId, arr);
+    }
   }
   return out;
 }
@@ -294,19 +298,23 @@ function gradeCloze(inputs: string[], corrects: string[]): boolean[] {
 async function loadOrderItems(db: DB, versionIds: number[]): Promise<Map<number, string[]>> {
   const out = new Map<number, string[]>();
   if (!versionIds.length) return out;
-  const placeholders = versionIds.map(() => "?").join(",");
-  const { results } = await db
-    .prepare(
-      `SELECT question_version_id AS "versionId", position, item_text AS "text"
-       FROM question_order_items
-       WHERE question_version_id IN (${placeholders}) ORDER BY question_version_id, position`,
-    )
-    .bind(...versionIds)
-    .all<{ versionId: number; position: number; text: string }>();
-  for (const r of results) {
-    const arr = out.get(r.versionId) ?? [];
-    arr[Number(r.position) - 1] = r.text;
-    out.set(r.versionId, arr);
+  // 全件復習で件数が増えてもバインド上限を踏まないよう分割取得する
+  for (let i = 0; i < versionIds.length; i += 50) {
+    const chunk = versionIds.slice(i, i + 50);
+    const placeholders = chunk.map(() => "?").join(",");
+    const { results } = await db
+      .prepare(
+        `SELECT question_version_id AS "versionId", position, item_text AS "text"
+         FROM question_order_items
+         WHERE question_version_id IN (${placeholders}) ORDER BY question_version_id, position`,
+      )
+      .bind(...chunk)
+      .all<{ versionId: number; position: number; text: string }>();
+    for (const r of results) {
+      const arr = out.get(r.versionId) ?? [];
+      arr[Number(r.position) - 1] = r.text;
+      out.set(r.versionId, arr);
+    }
   }
   return out;
 }
@@ -1879,16 +1887,15 @@ async function calcReviewStreak(
  * - 解消判定: ROW_NUMBERで直近N件を切り出し、全正解なら除外
  * 出題は current_version の最新スナップショットで行う (版ズレを踏まない)。
  * published のクイズのみ対象。
+ * 上限なしで全件返し、順序は毎回ランダム (ORDER BY RANDOM())。
  */
 export async function listMistakes(
   db: DB,
   filter: {
     quizId?: number | undefined;
     categoryId?: number | undefined;
-    limit?: number | undefined;
   },
 ): Promise<MistakeItem[]> {
-  const limit = Math.min(Math.max(filter.limit ?? 30, 1), 100);
   const streak = REVIEW_CLEAR_STREAK;
   const conds: string[] = ["qz.status = 'published'"];
   const filterParams: unknown[] = [];
@@ -1933,10 +1940,9 @@ export async function listMistakes(
        ${where}
          AND agg."mistakeCount" > 0
          AND NOT (agg."recentCount" = ? AND agg."recentCorrectCount" = ?)
-       ORDER BY agg."lastWrongAt" DESC
-       LIMIT ?`,
+        ORDER BY RANDOM()`,
     )
-    .bind(streak, streak, ...filterParams, streak, streak, limit)
+    .bind(streak, streak, ...filterParams, streak, streak)
     .all<{
       questionId: number;
       questionVersionId: number;
@@ -1953,14 +1959,20 @@ export async function listMistakes(
     }>();
   if (!rows.length) return [];
   const ids = rows.map((r) => r.questionVersionId);
-  const placeholders = ids.map(() => "?").join(",");
-  const { results: choiceRows } = await db
-    .prepare(
-      `SELECT question_version_id AS "versionId", position, choice_text AS "text", is_correct AS "isCorrect"
-       FROM question_choices WHERE question_version_id IN (${placeholders}) ORDER BY question_version_id, position`,
-    )
-    .bind(...ids)
-    .all<{ versionId: number; position: number; text: string; isCorrect: number }>();
+  // 全件復習で件数が増えてもバインド上限を踏まないよう分割取得する
+  const choiceRows: { versionId: number; position: number; text: string; isCorrect: number }[] = [];
+  for (let i = 0; i < ids.length; i += 50) {
+    const chunk = ids.slice(i, i + 50);
+    const placeholders = chunk.map(() => "?").join(",");
+    const { results } = await db
+      .prepare(
+        `SELECT question_version_id AS "versionId", position, choice_text AS "text", is_correct AS "isCorrect"
+         FROM question_choices WHERE question_version_id IN (${placeholders}) ORDER BY question_version_id, position`,
+      )
+      .bind(...chunk)
+      .all<{ versionId: number; position: number; text: string; isCorrect: number }>();
+    choiceRows.push(...results);
+  }
   const byVersion = new Map<number, { choices: string[]; answer: number }>();
   for (const ch of choiceRows) {
     let entry = byVersion.get(ch.versionId);

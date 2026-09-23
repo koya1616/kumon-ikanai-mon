@@ -19,8 +19,6 @@ type LoadState =
   | { name: "error"; message: string }
   | { name: "ready"; items: MistakeItem[] };
 
-const REVIEW_LIMIT = 30;
-
 export const Review = () => {
   const navigate = useNavigate();
   // ?quiz=ID で1クイズの苦手だけに絞る (履歴ページからの導線)
@@ -85,7 +83,7 @@ export const Review = () => {
     }
     let alive = true;
     api<{ items: MistakeItem[] }>(
-      `/api/review/mistakes?limit=${REVIEW_LIMIT}${quizFilter ? `&quizId=${quizFilter}` : ""}`,
+      `/api/review/mistakes${quizFilter ? `?quizId=${quizFilter}` : ""}`,
     )
       .then((d) => {
         if (!alive) return;
