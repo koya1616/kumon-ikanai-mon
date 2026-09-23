@@ -14,6 +14,7 @@ export const Category = () => {
   const [ready, setReady] = useState(false);
   const [kw, setKw] = useState("");
   const [diff, setDiff] = useState(0);
+  const [topicId, setTopicId] = useState<number | null>(null);
 
   useEffect(() => {
     let alive = true;
@@ -24,6 +25,12 @@ export const Category = () => {
       alive = false;
     };
   }, [loadTree]);
+
+  useEffect(() => {
+    setKw("");
+    setDiff(0);
+    setTopicId(null);
+  }, [catId]);
 
   const category = useMemo(() => (tree ?? []).find((c) => c.id === catId) ?? null, [tree, catId]);
 
@@ -54,7 +61,7 @@ export const Category = () => {
   const keyword = kw.trim();
 
   let shown = 0;
-  const blocks = category.topics
+  const baseBlocks = category.topics
     .map((t) => {
       const qs = t.quizzes.filter(
         (q) => (!keyword || q.title.includes(keyword)) && (!diff || q.difficulty === diff),
@@ -62,8 +69,10 @@ export const Category = () => {
       return { topic: t, quizzes: qs };
     })
     .filter((b) => b.quizzes.length > 0);
+  const blocks =
+    topicId == null ? baseBlocks : baseBlocks.filter((b) => b.topic.id === topicId);
   shown = blocks.reduce((n, b) => n + b.quizzes.length, 0);
-  const filtering = keyword !== "" || diff !== 0;
+  const filtering = keyword !== "" || diff !== 0 || topicId != null;
 
   return (
     <div className="screen cat-screen">
@@ -93,18 +102,23 @@ export const Category = () => {
             />
             <DifficultyFilter value={diff} onChange={setDiff} />
           </div>
-          {blocks.length > 1 && (
-            <nav className="cat-topic-nav" aria-label="トピック">
-              {blocks.map(({ topic, quizzes }) => (
+          {baseBlocks.length > 1 && (
+            <nav className="cat-topic-nav" aria-label="トピックで絞り込み">
+              <button
+                type="button"
+                className="chip chip-btn"
+                aria-pressed={topicId == null ? "true" : "false"}
+                onClick={() => setTopicId(null)}
+              >
+                すべて · {baseBlocks.reduce((n, b) => n + b.quizzes.length, 0)}
+              </button>
+              {baseBlocks.map(({ topic, quizzes }) => (
                 <button
                   key={topic.id}
                   type="button"
                   className="chip chip-btn"
-                  onClick={() =>
-                    document
-                      .getElementById(`topic-${topic.id}`)
-                      ?.scrollIntoView({ behavior: "smooth", block: "start" })
-                  }
+                  aria-pressed={topicId === topic.id ? "true" : "false"}
+                  onClick={() => setTopicId((cur) => (cur === topic.id ? null : topic.id))}
                 >
                   {topic.title} · {quizzes.length}
                 </button>
@@ -134,7 +148,7 @@ export const Category = () => {
               glyph="無"
               title="該当するクイズがありません"
               sub={
-                keyword || diff
+                filtering
                   ? "検索条件を変えてみてください。"
                   : "管理画面でこのカテゴリにクイズを追加してください。"
               }
@@ -147,6 +161,7 @@ export const Category = () => {
                   onClick={() => {
                     setKw("");
                     setDiff(0);
+                    setTopicId(null);
                   }}
                 >
                   絞り込みをクリア
