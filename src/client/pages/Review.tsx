@@ -41,6 +41,9 @@ export const Review = () => {
   const [orderBusy, setOrderBusy] = useState(false);
   // 解説を折りたたんだ問題 (questionVersionId)。別の問題に進めば開いた状態に戻る
   const [collapsedFor, setCollapsedFor] = useState<number | null>(null);
+  // スキップして答え・解説だけ表示中の問題 (questionVersionId)。未回答のまま後回しにするため、
+  // 回答記録 (picks/clozeResults/orderResults) には含めない。次へ進むときに末尾へ回して解除する。
+  const [skipped, setSkipped] = useState<Record<number, true>>({});
   // 1周回を束ねるID (集計用予約。サーバ側はNULL可だが常に送る)
   const [sessionId] = useState(() =>
     typeof crypto !== "undefined" && "randomUUID" in crypto
@@ -59,6 +62,7 @@ export const Review = () => {
     setOrderResults({});
     setServerInfo({});
     setCollapsedFor(null);
+    setSkipped({});
   }, []);
 
   const loadRandom = useCallback(async () => {
@@ -112,6 +116,7 @@ export const Review = () => {
     setOrderResults({});
     setServerInfo({});
     setCollapsedFor(null);
+    setSkipped({});
     window.scrollTo(0, 0);
   }, [state]);
 
@@ -121,7 +126,12 @@ export const Review = () => {
   const picked = target ? picks[target.questionVersionId] : undefined;
   const clozeResult = target ? clozeResults[target.questionVersionId] : undefined;
   const orderResult = target ? orderResults[target.questionVersionId] : undefined;
-  const revealed = picked !== undefined || clozeResult !== undefined || orderResult !== undefined;
+  const wasSkipped = !!target && !!skipped[target.questionVersionId];
+  const revealed =
+    picked !== undefined ||
+    clozeResult !== undefined ||
+    orderResult !== undefined ||
+    wasSkipped;
   const expCollapsed = !!target && collapsedFor === target.questionVersionId;
 
   const { doneCount, correctCount } = useMemo(() => {
@@ -216,30 +226,43 @@ export const Review = () => {
       if (!randomBusy) void loadRandom();
       return;
     }
+    // スキップ表示中は「答え・解説を見た上で後回し」にする。現在位置の1問を末尾へ回し、
+    // スキップ表示を解除して未回答に戻す。末尾でスキップした場合は先頭へ戻る。
+    const curId = target?.questionVersionId;
+    if (curId !== undefined && skipped[curId]) {
+      setOrder((prev) => {
+        if (pos < 0 || pos >= prev.length) return prev;
+        const cur = prev[pos];
+        if (!cur) return prev;
+        return [...prev.slice(0, pos), ...prev.slice(pos + 1), cur];
+      });
+      setSkipped((prev) => {
+        if (!prev[curId]) return prev;
+        const nextSkipped = { ...prev };
+        delete nextSkipped[curId];
+        return nextSkipped;
+      });
+      if (pos + 1 >= order.length) {
+        setPos(0);
+      }
+      window.scrollTo(0, 0);
+      return;
+    }
     if (pos + 1 < order.length) {
       setPos((p) => p + 1);
       window.scrollTo(0, 0);
     }
-  }, [revealed, pos, order.length, isRandom, randomBusy, loadRandom]);
+  }, [revealed, pos, order.length, isRandom, randomBusy, loadRandom, target, skipped]);
 
-  // スキップ: 未回答のまま後回しにする (サーバ記録なし)。現在位置の1問を末尾へ回し、
-  // 同じ位置に次の未回答を持ってくる。残り1問のみの場合は回す先がないため何もしない。
-  // ランダム一問では記録せず次のランダム出題に進む。
+  // スキップ: まず答えと解説だけを表示する (サーバ記録なし)。AnswerSheet の「次の問題 →」で
+  // 現在位置の1問を末尾へ回して後回しにする。残り1問のみの場合も表示だけして次へ進める。
+  // ランダム一問では表示後に「もう一問」で次のランダム出題に進む。
   const skip = useCallback(() => {
     if (!target || revealed) return;
-    if (isRandom) {
-      if (!randomBusy) void loadRandom();
-      return;
-    }
-    if (order.length <= 1) return;
-    setOrder((prev) => {
-      if (pos < 0 || pos >= prev.length) return prev;
-      const cur = prev[pos];
-      if (!cur) return prev;
-      return [...prev.slice(0, pos), ...prev.slice(pos + 1), cur];
-    });
+    setSkipped((prev) => ({ ...prev, [target.questionVersionId]: true }));
+    setCollapsedFor(null);
     window.scrollTo(0, 0);
-  }, [target, revealed, isRandom, randomBusy, loadRandom, order.length, pos]);
+  }, [target, revealed]);
 
   useEffect(() => {
     if (revealed) nextRef.current?.focus({ preventScroll: true });
@@ -412,9 +435,8 @@ export const Review = () => {
       : targetOrder
         ? !!orderResult?.correct
         : picked === target.answer);
-  // スキップは未回答時のみ表示。1問だけの復習では回す先がないため隠す
-  // (ランダム一問は常に次の出題があるため表示する)
-  const showSkip = !revealed && (isRandom || order.length > 1);
+  // スキップは未回答時のみ表示。押すと答え・解説を表示し、「次の問題 →」で後回しにする
+  const showSkip = !revealed;
   const clozeValues = targetCloze
     ? (clozeInputs[target.questionVersionId] ?? Array(target.correctAnswers.length).fill(""))
     : [];
@@ -497,11 +519,19 @@ export const Review = () => {
                     values={clozeValues}
                     status={
                       revealed
-                        ? (clozeResult?.details ?? []).map((d) => (d.correct ? "ok" : "ng"))
+                        ? wasSkipped
+                          ? target.correctAnswers.map((): "ng" => "ng")
+                          : (clozeResult?.details ?? []).map((d): "ok" | "ng" =>
+                              d.correct ? "ok" : "ng",
+                            )
                         : undefined
                     }
                     answers={
-                      revealed ? (clozeResult?.details ?? []).map((d) => d.answer) : undefined
+                      revealed
+                        ? wasSkipped
+                          ? target.correctAnswers
+                          : (clozeResult?.details ?? []).map((d) => d.answer)
+                        : undefined
                     }
                     editable={!revealed}
                     disabled={clozeBusy}
@@ -544,7 +574,7 @@ export const Review = () => {
                 )}
                 {showSkip && (
                   <button type="button" className="btn btn-block btn-ghost" onClick={skip}>
-                    スキップして後回し →
+                    スキップ（答えを見る） →
                   </button>
                 )}
                 <p className="muted" style={{ textAlign: "center" }}>
@@ -589,7 +619,7 @@ export const Review = () => {
                 )}
                 {showSkip && (
                   <button type="button" className="btn btn-block btn-ghost" onClick={skip}>
-                    スキップして後回し →
+                    スキップ（答えを見る） →
                   </button>
                 )}
                 <p className="muted" style={{ textAlign: "center" }}>
@@ -637,7 +667,7 @@ export const Review = () => {
                 </div>
                 {showSkip && (
                   <button type="button" className="btn btn-block btn-ghost" onClick={skip}>
-                    スキップして後回し →
+                    スキップ（答えを見る） →
                   </button>
                 )}
                 <p className="muted" style={{ textAlign: "center" }}>
@@ -662,11 +692,17 @@ export const Review = () => {
               ? isRandom
                 ? "正解！"
                 : "正解！よく直せたね"
-              : targetCloze
-                ? "不正解…"
-                : targetOrder
-                  ? "不正解… 正しい順序を確認しよう"
-                  : `不正解… 正解は ${target.answer} 番`
+              : wasSkipped
+                ? targetCloze
+                  ? "スキップ · 正解を確認しよう"
+                  : targetOrder
+                    ? "スキップ · 正しい順序を確認しよう"
+                    : `スキップ · 正解は ${target.answer} 番`
+                : targetCloze
+                  ? "不正解…"
+                  : targetOrder
+                    ? "不正解… 正しい順序を確認しよう"
+                    : `不正解… 正解は ${target.answer} 番`
           }
           scoreText={
             <>
@@ -685,7 +721,11 @@ export const Review = () => {
             !isOk ? (
               <CorrectAnswerBlock
                 questionType={target.questionType}
-                clozeAnswers={(clozeResult?.details ?? []).map((d) => d.answer)}
+                clozeAnswers={
+                  wasSkipped
+                    ? target.correctAnswers
+                    : (clozeResult?.details ?? []).map((d) => d.answer)
+                }
                 correctOrder={orderResult?.correctOrder ?? target.correctOrder}
               />
             ) : undefined
@@ -699,11 +739,11 @@ export const Review = () => {
               ? randomBusy
                 ? "出題中…"
                 : "もう一問 →"
-              : pos + 1 >= order.length
+              : !wasSkipped && pos + 1 >= order.length
                 ? "結果を見る"
                 : "次の問題 →"
           }
-          nextVariant={pos + 1 >= order.length ? "primary" : "ink"}
+          nextVariant={!wasSkipped && pos + 1 >= order.length ? "primary" : "ink"}
           onNext={next}
           nextRef={nextRef}
           nextDisabled={isRandom && randomBusy}
