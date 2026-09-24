@@ -14,12 +14,13 @@ type LoadState =
   | { name: "error"; message: string }
   | { name: "ready"; items: AttemptHistoryItem[] };
 
-type SortKey = "latest" | "oldest" | "count" | "weak" | "name";
+type SortKey = "latest" | "oldest" | "count" | "countAsc" | "weak" | "name";
 
 const SORTS: { id: SortKey; label: string }[] = [
   { id: "latest", label: "最新順" },
   { id: "oldest", label: "古い順" },
   { id: "count", label: "回数が多い順" },
+  { id: "countAsc", label: "回数が少ない順" },
   { id: "weak", label: "ベストが低い順" },
   { id: "name", label: "名前順" },
 ];
@@ -152,6 +153,9 @@ const HistoryQuizList = ({
     switch (sort) {
       case "count":
         sorted.sort((a, b) => b.count - a.count);
+        break;
+      case "countAsc":
+        sorted.sort((a, b) => a.count - b.count);
         break;
       case "weak":
         sorted.sort((a, b) => a.bestPct - b.bestPct);
