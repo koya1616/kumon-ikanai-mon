@@ -197,14 +197,14 @@ const RandomShortcut = () => (
   <Link
     className="shortcut-card"
     to="/review?random=1"
-    aria-label="ランダムに一問だけ回答する（練習・成績に残りません）"
+    aria-label="ランダムに一問だけ回答する（練習・本番成績外、苦手記録に残ります）"
   >
     <span className="shortcut-glyph" aria-hidden="true">
       １
     </span>
     <span className="grow">
       <span className="shortcut-title">ランダム一問</span>
-      <span className="muted">全体から1問だけ・成績に残りません</span>
+      <span className="muted">全体から1問だけ・本番成績外（苦手には記録）</span>
     </span>
     <Icon name="arrow" />
   </Link>
@@ -228,7 +228,7 @@ const ShortcutRow = ({ mistakeCount }: { mistakeCount: number | null }) => {
         <Link
           className="shortcut-card"
           to="/review"
-          aria-label="苦手だけ復習する（練習・成績に残りません）"
+          aria-label="苦手だけ復習する（練習・本番成績外、苦手記録に残ります）"
         >
           <span className="shortcut-glyph" aria-hidden="true">
             弱
@@ -240,7 +240,7 @@ const ShortcutRow = ({ mistakeCount }: { mistakeCount: number | null }) => {
                 <span className="chip chip-shu">{mistakeCount}問</span>
               )}
             </span>
-            <span className="muted">練習なので成績に残りません</span>
+            <span className="muted">練習なので本番成績外（苦手には記録）</span>
           </span>
           <Icon name="arrow" />
         </Link>

@@ -341,7 +341,7 @@ export const Review = () => {
             <div className="hist-band-inner">
               <Crumbs items={[{ label: "ホーム", href: "/" }, { label: "ランダム一問" }]} />
               <h1 className="title-lg">ランダム一問</h1>
-              <p className="muted">練習モード · 成績には残りません</p>
+              <p className="muted">練習モード · 本番成績には残りません（苦手記録には残ります）</p>
             </div>
           </div>
           <div className="hist-body">
@@ -367,7 +367,7 @@ export const Review = () => {
           <div className="hist-band-inner">
             <Crumbs items={[{ label: "ホーム", href: "/" }, { label: "苦手だけ復習" }]} />
             <h1 className="title-lg">苦手だけ復習</h1>
-            <p className="muted">練習モード · 成績には残りません</p>
+            <p className="muted">練習モード · 本番成績には残りません（苦手記録には残ります）</p>
           </div>
         </div>
         <div className="hist-body">
@@ -399,7 +399,7 @@ export const Review = () => {
             <Crumbs items={[{ label: "ホーム", href: "/" }, { label: "苦手だけ復習" }]} />
             <h1 className="title-lg">復習おわり</h1>
             <p className="muted">
-              {order.length}問中 {correctCount}問正解（正答率 {pct}%）· 成績には残っていません
+              {order.length}問中 {correctCount}問正解（正答率 {pct}%）· 本番成績には残っていません（苦手記録には反映済み）
             </p>
           </div>
         </div>
@@ -446,7 +446,7 @@ export const Review = () => {
       <div className="play">
         <div className="play-top">
           <span className="chip chip-shu">
-            <span className="play-status-full">練習中 · 復習記録に残ります</span>
+            <span className="play-status-full">練習中 · 本番成績外・苦手に記録</span>
             <span className="play-status-short">練習中</span>
           </span>
           <div className="play-dots" aria-hidden="true">
