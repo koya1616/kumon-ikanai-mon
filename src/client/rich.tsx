@@ -18,6 +18,40 @@ export const splitClozeParts = (text: string): ({ text: string } | { blank: numb
   return out;
 };
 
+/** 解説文中の画像記法 `![alt](src)` で分割する (コード内は対象外にするためInlinePartsから呼ぶ) */
+export const splitImageParts = (
+  text: string,
+): ({ text: string } | { alt: string; src: string })[] => {
+  const out: ({ text: string } | { alt: string; src: string })[] = [];
+  const re = /!\[([^\]\n]*)\]\(([^)\s]+)\)/g;
+  let last = 0;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(text)) !== null) {
+    if (m.index > last) out.push({ text: text.slice(last, m.index) });
+    out.push({ alt: m[1] ?? "", src: m[2] ?? "" });
+    last = m.index + m[0].length;
+  }
+  if (last < text.length) out.push({ text: text.slice(last) });
+  return out;
+};
+
+/** imgのsrcとして安全か (同一オリジンの配信パス・https・data:imageのみ許可) */
+export const isSafeImageSrc = (src: string): boolean => {
+  if (/^\/api\/images\/[0-9a-f-]{36}\.(png|jpg|webp|gif)$/.test(src)) return true;
+  if (src.startsWith("https://")) return true;
+  if (src.startsWith("data:image/")) return true;
+  return false;
+};
+
+const RichImage = ({ alt, src }: { alt: string; src: string }) => {
+  const [failed, setFailed] = useState(false);
+  // 不正スキーム (javascript: 等) や読み込み失敗時は記法をテキスト表示に退避する
+  if (failed || !isSafeImageSrc(src)) return <span>{`![${alt}](${src})`}</span>;
+  return (
+    <img className="rich-img" src={src} alt={alt} loading="lazy" onError={() => setFailed(true)} />
+  );
+};
+
 const InlineParts = ({
   text,
   renderBlank,
@@ -60,17 +94,36 @@ const InlineParts = ({
           let k = 0;
           return (
             <span key={i}>
-              {splitClozeParts(part).map((seg) =>
-                "blank" in seg ? (
-                  <span key={k++}>{renderBlank(seg.blank)}</span>
+              {splitImageParts(part).map((seg) =>
+                "src" in seg ? (
+                  <RichImage key={k++} alt={seg.alt} src={seg.src} />
                 ) : (
-                  <InlineLines key={k++} text={seg.text} />
+                  <span key={k++}>
+                    {splitClozeParts(seg.text).map((s2) => {
+                      const kk = k++;
+                      return "blank" in s2 ? (
+                        <span key={kk}>{renderBlank(s2.blank)}</span>
+                      ) : (
+                        <InlineLines key={kk} text={s2.text} />
+                      );
+                    })}
+                  </span>
                 ),
               )}
             </span>
           );
         }
-        return <InlineLines key={i} text={part} />;
+        return (
+          <span key={i}>
+            {splitImageParts(part).map((seg, j) =>
+              "src" in seg ? (
+                <RichImage key={j} alt={seg.alt} src={seg.src} />
+              ) : (
+                <InlineLines key={j} text={seg.text} />
+              ),
+            )}
+          </span>
+        );
       })}
     </>
   );

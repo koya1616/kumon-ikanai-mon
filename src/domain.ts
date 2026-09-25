@@ -31,6 +31,19 @@ export const ORDER_MIN_ITEMS = 4;
 export const ORDER_MAX_ITEMS = 20;
 /** 並べ替え1ブロックの最大文字数 (コード行・SQL行を想定) */
 export const ORDER_ITEM_MAX_LENGTH = 500;
+/** 解説画像の最大バイト数 (R2保存用) */
+export const IMAGE_MAX_BYTES = 5 * 1024 * 1024;
+/** 解説画像として受け付けるMIME (拡張子マップ付き) */
+export const IMAGE_MIME_TO_EXT = {
+  "image/png": "png",
+  "image/jpeg": "jpg",
+  "image/webp": "webp",
+  "image/gif": "gif",
+} as const;
+/** R2オブジェクトキー (randomUUID + 拡張子のみ許可し、パストラバーサルを防ぐ) */
+export const imageKeySchema = z
+  .string()
+  .regex(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.(png|jpg|webp|gif)$/);
 
 export interface Category {
   id: number;

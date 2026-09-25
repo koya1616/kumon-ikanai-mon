@@ -1,13 +1,20 @@
 // API クライアントとドメイン型 (サーバの REST 契約に対応)。
 // サーバのルート定義 (src/index.ts) と 1:1 に対応させること。
 import {
+  IMAGE_MAX_BYTES,
   ORDER_ITEM_MAX_LENGTH,
   ORDER_MAX_ITEMS,
   ORDER_MIN_ITEMS,
   QUESTIONS_PER_QUIZ,
 } from "../domain";
 
-export { ORDER_ITEM_MAX_LENGTH, ORDER_MAX_ITEMS, ORDER_MIN_ITEMS, QUESTIONS_PER_QUIZ };
+export {
+  IMAGE_MAX_BYTES,
+  ORDER_ITEM_MAX_LENGTH,
+  ORDER_MAX_ITEMS,
+  ORDER_MIN_ITEMS,
+  QUESTIONS_PER_QUIZ,
+};
 
 export interface Category {
   id: number;

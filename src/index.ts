@@ -9,6 +9,9 @@ import {
   clozeQuestionCreateSchema,
   clozeQuestionSchema,
   idParamSchema,
+  IMAGE_MAX_BYTES,
+  IMAGE_MIME_TO_EXT,
+  imageKeySchema,
   importEnvelopeSchema,
   isClozePayload,
   isOrderPayload,
@@ -34,6 +37,7 @@ import {
   json,
   parseIdParam,
   readJson,
+  SECURITY_HEADERS,
   shuffle,
   validated,
 } from "./http";
@@ -149,6 +153,47 @@ async function route(req: Request, env: Env): Promise<Response> {
         }
         return json({ ok: true });
       }
+    }
+  }
+
+  // ---------- Image (解説用画像のR2保存・配信) ----------
+  if (path === "/api/images" && method === "POST") {
+    let form: FormData;
+    try {
+      form = await req.formData();
+    } catch {
+      return json({ error: "画像ファイルを指定してください" }, 400);
+    }
+    const file = form.get("file");
+    if (!(file instanceof File) || file.size === 0) {
+      return json({ error: "画像ファイルを指定してください" }, 400);
+    }
+    const ext = (IMAGE_MIME_TO_EXT as Record<string, string>)[file.type];
+    if (!ext) {
+      return json({ error: "png / jpeg / webp / gif の画像を指定してください" }, 400);
+    }
+    if (file.size > IMAGE_MAX_BYTES) {
+      return json({ error: "画像は5MB以下にしてください" }, 400);
+    }
+    const key = `${crypto.randomUUID()}.${ext}`;
+    await env.IMAGES.put(key, file, { httpMetadata: { contentType: file.type } });
+    return json({ key, url: `/api/images/${key}` }, 201);
+  }
+  {
+    const m = /^\/api\/images\/([^/]+)$/.exec(path);
+    if (m) {
+      if (method !== "GET") return json({ error: "見つかりません" }, 404);
+      const v = validated(imageKeySchema.safeParse(m[1]));
+      if ("res" in v) return v.res;
+      const obj = await env.IMAGES.get(v.data);
+      if (!obj) return json({ error: "見つかりません" }, 404);
+      return new Response(obj.body, {
+        headers: {
+          "Content-Type": obj.httpMetadata?.contentType ?? "application/octet-stream",
+          "Cache-Control": "public, max-age=31536000, immutable",
+          ...SECURITY_HEADERS,
+        },
+      });
     }
   }
 

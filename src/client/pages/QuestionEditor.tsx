@@ -1,9 +1,11 @@
 // 問題エディタ (ステッパー式: 1問ずつ集中して編集)。
 // 10枠 drafts を持ち、保存は POST /api/questions/batch 一括。
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import type { ClipboardEvent } from "react";
 import { Link } from "react-router";
 import {
   api,
+  IMAGE_MAX_BYTES,
   isCloze,
   isOrder,
   ORDER_MAX_ITEMS,
@@ -82,6 +84,9 @@ export const QuestionEditor = ({ quiz, onSaved }: { quiz: Quiz; onSaved: () => v
   const [cur, setCur] = useState(0);
   const [loadError, setLoadError] = useState("");
   const [saving, setSaving] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const explanationRef = useRef<HTMLTextAreaElement>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     let alive = true;
@@ -184,6 +189,57 @@ export const QuestionEditor = ({ quiz, onSaved }: { quiz: Quiz; onSaved: () => v
 
   const patch = (i: number, p: Partial<Draft>) =>
     setDrafts((prev) => (prev ? prev.map((x, k) => (k === i ? { ...x, ...p } : x)) : prev));
+
+  /** 解説用画像をR2に登録し、記法を解説文に挿入する */
+  const uploadImage = async (file: File, index: number) => {
+    if (!file.type.startsWith("image/")) {
+      toast("画像ファイルを選んでください", "ng");
+      return;
+    }
+    if (file.size > IMAGE_MAX_BYTES) {
+      toast(`画像は${Math.round(IMAGE_MAX_BYTES / 1024 / 1024)}MB以下にしてください`, "ng");
+      return;
+    }
+    setUploading(true);
+    try {
+      const form = new FormData();
+      form.append("file", file);
+      const r = await fetch("/api/images", { method: "POST", body: form });
+      const data = (await r.json()) as { url?: string; error?: string };
+      if (!r.ok || !data.url) throw new Error(data.error ?? `HTTP ${r.status}`);
+      const alt = file.name.replace(/\s+/g, "_").slice(0, 50) || "画像";
+      const mark = `![${alt}](${data.url})`;
+      const el = explanationRef.current;
+      setDrafts((prev) => {
+        if (!prev) return prev;
+        const target = prev[index]!;
+        // 編集中の枠にフォーカスが残っていればカーソル位置へ、そうでなければ末尾へ
+        if (el && document.activeElement === el) {
+          const s = el.selectionStart ?? target.explanation.length;
+          const e = el.selectionEnd ?? target.explanation.length;
+          const next = `${target.explanation.slice(0, s)}\n${mark}\n${target.explanation.slice(e)}`;
+          return prev.map((x, k) => (k === index ? { ...x, explanation: next } : x));
+        }
+        const sep = target.explanation && !target.explanation.endsWith("\n") ? "\n" : "";
+        return prev.map((x, k) =>
+          k === index ? { ...x, explanation: `${target.explanation}${sep}${mark}\n` } : x,
+        );
+      });
+      toast("画像を登録しました", "ok");
+    } catch (e) {
+      toast((e as Error).message, "ng");
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  /** 解説欄への画像ペースト (テキスト貼付けは通常通り通す) */
+  const onExplanationPaste = (e: ClipboardEvent<HTMLTextAreaElement>) => {
+    const file = Array.from(e.clipboardData?.files ?? []).find((f) => f.type.startsWith("image/"));
+    if (!file) return;
+    e.preventDefault();
+    void uploadImage(file, cur);
+  };
 
   const save = () => {
     const payload: (
@@ -564,13 +620,38 @@ export const QuestionEditor = ({ quiz, onSaved }: { quiz: Quiz; onSaved: () => v
         )}
         <label className="field">
           <span className="label">解説</span>
+          <div className="row wrap">
+            <button
+              type="button"
+              className="btn btn-sm"
+              disabled={uploading}
+              onClick={() => fileRef.current?.click()}
+            >
+              {uploading ? "画像を登録中…" : "画像を追加"}
+            </button>
+            {uploading && <span className="muted">アップロード中…</span>}
+            <input
+              ref={fileRef}
+              type="file"
+              accept="image/png,image/jpeg,image/webp,image/gif"
+              hidden
+              aria-label="解説に使う画像を選択"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                e.target.value = "";
+                if (file) void uploadImage(file, cur);
+              }}
+            />
+          </div>
           <textarea
+            ref={explanationRef}
             className="textarea"
             style={{ minHeight: 72 }}
-            placeholder="解説（任意。``` で囲むとコードブロックになります）"
+            placeholder="解説（任意。``` で囲むとコードブロックになります。画像ボタンや貼付けで画像も登録できます）"
             aria-label="解説"
             value={d.explanation}
             onChange={(e) => patch(cur, { explanation: e.target.value })}
+            onPaste={onExplanationPaste}
           />
           <div className="admin-preview admin-preview-sm rich">
             <RichText text={d.explanation} />

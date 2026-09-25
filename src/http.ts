@@ -36,6 +36,7 @@ export function htmlResponse(html: string): Response {
 
 export type Env = {
   DB: D1Database;
+  IMAGES: R2Bucket;
   BASIC_USER?: string;
   BASIC_PASS?: string;
 };

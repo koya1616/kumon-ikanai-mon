@@ -1182,3 +1182,13 @@ input.cloze-blank:focus {
   min-width: 0;
   flex: 1;
 }
+/* 解説文中の画像 (`![alt](src)` 記法の描画) */
+.rich .rich-img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin: 8px 0;
+  border-radius: var(--r-md);
+  border: 1px solid var(--rule-soft);
+  background: var(--paper-2);
+}
