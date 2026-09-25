@@ -52,6 +52,10 @@ export const Review = () => {
   );
   const [serverInfo, setServerInfo] = useState<Record<number, ReviewAnswerResult>>({});
   const [randomBusy, setRandomBusy] = useState(false);
+  // 回答POSTの二重送信ガード (questionVersionId単位)。revealed等のstateは非同期反映のため
+  // 連打・再レンダー前の再入を防げず、1回答で2行記録されると連続正解数が2進んでしまう。
+  // refは同期的にはじけるためここで抑止する。もう一周・再出題時にクリアする。
+  const postingRef = useRef<Record<number, boolean>>({});
 
   const resetAnswers = useCallback(() => {
     setPos(0);
@@ -63,6 +67,7 @@ export const Review = () => {
     setServerInfo({});
     setCollapsedFor(null);
     setSkipped({});
+    postingRef.current = {};
   }, []);
 
   const loadRandom = useCallback(async () => {
@@ -117,6 +122,7 @@ export const Review = () => {
     setServerInfo({});
     setCollapsedFor(null);
     setSkipped({});
+    postingRef.current = {};
     window.scrollTo(0, 0);
   }, [state]);
 
@@ -162,6 +168,8 @@ export const Review = () => {
   const pick = useCallback(
     (n: number) => {
       if (!target || revealed) return;
+      if (postingRef.current[target.questionVersionId]) return;
+      postingRef.current[target.questionVersionId] = true;
       // 即時反映し、記録はバックグラウンドで送る (失敗しても復習を止めない)
       setPicks((p) => ({ ...p, [target.questionVersionId]: n }));
       void api<ReviewAnswerResult>("/api/review/answers", {
@@ -182,6 +190,8 @@ export const Review = () => {
     if (!target || revealed || clozeBusy) return;
     const inputs = clozeInputs[target.questionVersionId] ?? [];
     if (inputs.length !== target.correctAnswers.length || inputs.some((s) => !s.trim())) return;
+    if (postingRef.current[target.questionVersionId]) return;
+    postingRef.current[target.questionVersionId] = true;
     setClozeBusy(true);
     api<ReviewAnswerResult>("/api/review/answers", {
       method: "POST",
@@ -203,6 +213,8 @@ export const Review = () => {
     if (!target || revealed || orderBusy) return;
     const values = orderInputs[target.questionVersionId] ?? target.items;
     if (values.length !== target.correctOrder.length) return;
+    if (postingRef.current[target.questionVersionId]) return;
+    postingRef.current[target.questionVersionId] = true;
     setOrderBusy(true);
     api<ReviewAnswerResult>("/api/review/answers", {
       method: "POST",
