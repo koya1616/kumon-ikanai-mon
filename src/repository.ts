@@ -1938,7 +1938,7 @@ export async function listMistakes(
         c.id AS "categoryId", c.title AS "categoryTitle",
         cv.question_type AS "questionType",
         cv.statement AS "statement", cv.explanation AS "explanation",
-        agg."mistakeCount", agg."lastWrongAt"
+        agg."mistakeCount", agg."lastWrongAt", agg."firstWrongRn"
        FROM questions q
        JOIN agg ON agg."qid" = q.id
        JOIN quizzes qz ON qz.id = q.quiz_id
