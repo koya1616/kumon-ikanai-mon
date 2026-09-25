@@ -1663,6 +1663,10 @@ export interface MistakeItem {
   explanation: string;
   mistakeCount: number;
   lastWrongAt: string | null;
+  /** 出題時点の直近連続正解数 (本番+復習の統合時系列・今回の回答前) */
+  streak: number;
+  /** 苦手解消までの残り正解数 (= REVIEW_CLEAR_STREAK - streak) */
+  remaining: number;
 }
 
 /** 復習回答が参照しているか (コンテンツ削除ガード用。attempts系とは別建て) */
@@ -1918,14 +1922,15 @@ export async function listMistakes(
            ROW_NUMBER() OVER (PARTITION BY question_id ORDER BY created_at DESC, seq DESC) AS "rn"
          FROM unified_answer_history
        ),
-       agg AS (
-         SELECT "qid",
-           SUM(CASE WHEN correct = 0 THEN 1 ELSE 0 END) AS "mistakeCount",
-           MAX(CASE WHEN correct = 0 THEN created_at ELSE NULL END) AS "lastWrongAt",
-           SUM(CASE WHEN "rn" <= ? AND correct = 1 THEN 1 ELSE 0 END) AS "recentCorrectCount",
-           SUM(CASE WHEN "rn" <= ? THEN 1 ELSE 0 END) AS "recentCount"
-         FROM ranked GROUP BY "qid"
-       )
+        agg AS (
+          SELECT "qid",
+            SUM(CASE WHEN correct = 0 THEN 1 ELSE 0 END) AS "mistakeCount",
+            MAX(CASE WHEN correct = 0 THEN created_at ELSE NULL END) AS "lastWrongAt",
+            SUM(CASE WHEN "rn" <= ? AND correct = 1 THEN 1 ELSE 0 END) AS "recentCorrectCount",
+            SUM(CASE WHEN "rn" <= ? THEN 1 ELSE 0 END) AS "recentCount",
+            MIN(CASE WHEN "rn" <= ? AND correct = 0 THEN "rn" ELSE NULL END) AS "firstWrongRn"
+          FROM ranked GROUP BY "qid"
+        )
        SELECT q.id AS "questionId",
         q.current_version_id AS "questionVersionId",
         qz.id AS "quizId", qz.title AS "quizTitle",
@@ -1945,7 +1950,7 @@ export async function listMistakes(
          AND NOT (agg."recentCount" = ? AND agg."recentCorrectCount" = ?)
         ORDER BY RANDOM()`,
     )
-    .bind(streak, streak, ...filterParams, streak, streak)
+    .bind(streak, streak, streak, ...filterParams, streak, streak)
     .all<{
       questionId: number;
       questionVersionId: number;
@@ -1959,6 +1964,7 @@ export async function listMistakes(
       explanation: string | null;
       mistakeCount: number;
       lastWrongAt: string | null;
+      firstWrongRn: number | null;
     }>();
   if (!rows.length) return [];
   const ids = rows.map((r) => r.questionVersionId);
@@ -1999,6 +2005,12 @@ export async function listMistakes(
     const isCloze = r.questionType === "cloze_text";
     const isOrder = r.questionType === "order_blocks";
     const correctOrder = orderByVersion.get(r.questionVersionId) ?? [];
+    // 直近の初不正解位置から連続正解数を復元する (未回答の苦手は firstWrongRn=1 → streak=0)。
+    // 解消済みはSQLで除外済みのため、ここでは remaining >= 1 になるはず。
+    const currentStreak =
+      r.firstWrongRn === null || r.firstWrongRn === undefined
+        ? 0
+        : Math.max(0, Number(r.firstWrongRn) - 1);
     return {
       questionId: Number(r.questionId),
       questionVersionId: Number(r.questionVersionId),
@@ -2018,6 +2030,8 @@ export async function listMistakes(
       explanation: r.explanation ?? "",
       mistakeCount: Number(r.mistakeCount),
       lastWrongAt: r.lastWrongAt,
+      streak: currentStreak,
+      remaining: Math.max(0, REVIEW_CLEAR_STREAK - currentStreak),
     };
   });
 }
@@ -2084,6 +2098,7 @@ export async function getRandomQuestion(db: DB): Promise<MistakeItem | null> {
   const correctOrder = isOrder
     ? ((await loadOrderItems(db, [versionId])).get(versionId) ?? [])
     : [];
+  const streakInfo = await calcReviewStreak(db, Number(row.questionId));
   return {
     questionId: Number(row.questionId),
     questionVersionId: versionId,
@@ -2103,6 +2118,7 @@ export async function getRandomQuestion(db: DB): Promise<MistakeItem | null> {
     explanation: row.explanation ?? "",
     mistakeCount: 0,
     lastWrongAt: null,
+    ...streakInfo,
   };
 }
 

@@ -440,6 +440,11 @@ export const Review = () => {
   const clozeValues = targetCloze
     ? (clozeInputs[target.questionVersionId] ?? Array(target.correctAnswers.length).fill(""))
     : [];
+  // 出題時点の残り回数 (回答前)。回答後は AnswerSheet 側でサーバ返却の最新値を表示する。
+  const initialRemaining =
+    typeof target.remaining === "number" && Number.isFinite(target.remaining)
+      ? target.remaining
+      : null;
 
   return (
     <div className="screen">
@@ -503,6 +508,11 @@ export const Review = () => {
             <p className="muted">
               {target.mistakeCount > 1 ? `${target.mistakeCount}回間違い · ` : ""}元クイズ:{" "}
               <Link to={`/play/${target.quizId}`}>{target.quizTitle}</Link>
+              {!isRandom &&
+                !revealed &&
+                initialRemaining !== null &&
+                initialRemaining > 0 &&
+                ` · あと${initialRemaining}回正解で苦手解消`}
             </p>
             {targetCloze ? (
               <form
@@ -711,8 +721,7 @@ export const Review = () => {
                 const info = serverInfo[target.questionVersionId];
                 if (!info) return null;
                 if (info.resolved) return " · 苦手解消！";
-                if (info.correct) return ` · あと${info.remaining}回で解消`;
-                return null;
+                return ` · あと${info.remaining}回で解消`;
               })()}
             </>
           }

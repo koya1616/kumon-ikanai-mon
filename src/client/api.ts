@@ -239,6 +239,10 @@ export interface MistakeItem {
   explanation: string;
   mistakeCount: number;
   lastWrongAt: string | null;
+  /** 出題時点の直近連続正解数 (今回の回答前) */
+  streak: number;
+  /** 苦手解消までの残り正解数 */
+  remaining: number;
 }
 
 /** ブックマーク一覧用の1問 (最新版スナップショット + ブックマーク日時) */
