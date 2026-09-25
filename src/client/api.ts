@@ -159,6 +159,7 @@ export interface AttemptRecord {
 /** クイズ横断の完了履歴1件 (GET /api/attempts/recent の返却形) */
 export interface AttemptHistoryItem extends AttemptRecord {
   quizTitle: string;
+  difficulty: number;
   topicId: number;
   topicTitle: string;
   categoryId: number;

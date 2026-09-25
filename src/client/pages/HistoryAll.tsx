@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router";
 import { api, fmtDuration } from "../api";
 import type { AttemptHistoryItem } from "../api";
-import { EmptyState, Skeletons } from "../ui";
+import { EmptyState, Skeletons, Stars } from "../ui";
 import { BackButton, SearchBox } from "../components/feedback";
 import { barToneOf, fmtDateTimeFull, pctOf } from "../lib/display";
 import { historyHref, playHref } from "../lib/links";
@@ -28,6 +28,7 @@ const SORTS: { id: SortKey; label: string }[] = [
 interface QuizGroup {
   quizId: number;
   quizTitle: string;
+  difficulty: number;
   categoryTitle: string;
   topicTitle: string;
   attempts: AttemptHistoryItem[];
@@ -59,6 +60,7 @@ const groupByQuiz = (items: AttemptHistoryItem[]): QuizGroup[] => {
     return {
       quizId: latest.quizId,
       quizTitle: latest.quizTitle,
+      difficulty: latest.difficulty,
       categoryTitle: latest.categoryTitle,
       topicTitle: latest.topicTitle,
       attempts,
@@ -272,6 +274,7 @@ const QuizCard = ({ group: g }: { group: QuizGroup }) => {
           <span className={`ha-pill ${tone}`}>
             ベスト {g.best}/{g.bestTotal}
           </span>
+          <Stars n={g.difficulty} />
           <span>{g.count}回挑戦</span>
           <span>
             <HistDateTime value={g.latest.completedAt} />

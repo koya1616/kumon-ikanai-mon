@@ -1596,6 +1596,7 @@ export async function listInProgressAttempts(
 /** クイズ横断の完了履歴 (新しい順)。パンくず付きで返す */
 export interface RecentAttempt extends Attempt {
   quizTitle: string;
+  difficulty: number;
   topicId: number;
   topicTitle: string;
   categoryId: number;
@@ -1615,6 +1616,7 @@ export async function listRecentAttempts(db: DB, limit: number): Promise<RecentA
           ELSE CAST((julianday(a.completed_at) - julianday(a.created_at)) * 86400 AS INTEGER)
         END AS "durationSec",
         q.title AS "quizTitle",
+        q.difficulty AS "difficulty",
         t.id AS "topicId", t.title AS "topicTitle",
         c.id AS "categoryId", c.title AS "categoryTitle",
         (SELECT COUNT(*) FROM attempts a2
@@ -1632,6 +1634,7 @@ export async function listRecentAttempts(db: DB, limit: number): Promise<RecentA
     .all<RecentAttempt>();
   return results.map((r) => ({
     ...r,
+    difficulty: Number(r.difficulty),
     durationSec: r.durationSec === null ? null : Number(r.durationSec),
     attemptNumber: Number(r.attemptNumber),
     attemptCount: Number(r.attemptCount),
