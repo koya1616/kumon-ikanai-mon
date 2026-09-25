@@ -19,6 +19,16 @@ type LoadState =
   | { name: "error"; message: string }
   | { name: "ready"; items: MistakeItem[] };
 
+// 残り1回で苦手解消 (remaining === 1) の問題は配列の最後に配置する。
+// グループ内はランダム順を保つため、先にシャッフルしてから安定パーティションする。
+export const orderForReview = (items: MistakeItem[]): MistakeItem[] => {
+  const shuffled = shuffle(items);
+  return [
+    ...shuffled.filter((it) => it.remaining !== 1),
+    ...shuffled.filter((it) => it.remaining === 1),
+  ];
+};
+
 export const Review = () => {
   const navigate = useNavigate();
   // ?quiz=ID で1クイズの苦手だけに絞る (履歴ページからの導線)
@@ -98,7 +108,7 @@ export const Review = () => {
         if (!alive) return;
         const items = d.items ?? [];
         setState({ name: "ready", items });
-        setOrder(shuffle(items));
+        setOrder(orderForReview(items));
         setPos(0);
         setPicks({});
       })
@@ -112,7 +122,7 @@ export const Review = () => {
 
   const reshuffle = useCallback(() => {
     if (state.name !== "ready") return;
-    setOrder(shuffle(state.items));
+    setOrder(orderForReview(state.items));
     setPos(0);
     setPicks({});
     setClozeInputs({});
