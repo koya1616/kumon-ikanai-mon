@@ -449,51 +449,6 @@
   .stat-card.is-published .stat-num {
     color: var(--moegi);
   }
-  /* 絞り込みバー: 検索 + 状態チップ + 並び順 */
-  .quiz-filter-bar {
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-    padding: 12px;
-    background: var(--paper-2);
-    border: 1px solid var(--rule-soft);
-    border-radius: var(--r-md);
-  }
-  .quiz-search {
-    width: 100%;
-  }
-  .quiz-filter-chips {
-    display: flex;
-    gap: 6px;
-    flex-wrap: wrap;
-  }
-  .quiz-sort {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    font-size: 13px;
-  }
-  .quiz-sort .select {
-    flex: 1;
-  }
-  @media (min-width: 760px) {
-    .quiz-filter-bar {
-      flex-direction: row;
-      align-items: center;
-      flex-wrap: wrap;
-    }
-    .quiz-search {
-      width: 240px;
-      flex: none;
-    }
-    .quiz-filter-chips {
-      flex: 1;
-    }
-    .quiz-sort .select {
-      width: 160px;
-      flex: none;
-    }
-  }
   /* サイドの下書きドット + ミニチップ */
   .draft-dot {
     color: var(--yamabuki);
@@ -676,5 +631,186 @@
   }
   .save-bar .status.is-dirty {
     color: var(--shu);
+  }
+
+  /* ---- 検索式セレクト等の補足表示 ---- */
+  .omni-sub {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--ink-3);
+  }
+
+  /* ---- ステップの直接切替 ---- */
+  .steps-jump .step-jump {
+    cursor: default;
+  }
+  .step-select {
+    margin-top: 6px;
+    font-size: 13px;
+  }
+  .select-sm {
+    min-height: 36px;
+    padding: 6px 32px 6px 10px;
+    font-size: 13px;
+  }
+
+  /* ---- サイド explorer ---- */
+  .recent-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .recent-chip {
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .recent-kind {
+    display: inline-grid;
+    place-items: center;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    font-size: 10px;
+    font-weight: 800;
+  }
+  .input-sm {
+    min-height: 36px;
+    padding: 6px 10px;
+    font-size: 13px;
+  }
+  .tree-scroll {
+    max-height: 320px;
+    overflow: auto;
+    padding-right: 2px;
+  }
+  .tree-group {
+    border-radius: var(--r-sm);
+  }
+  .tree-group.is-current {
+    background: color-mix(in srgb, var(--ink) 5%, transparent);
+  }
+  .tree-row {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+  }
+  .tree-row .tree-item {
+    flex: 1;
+    min-width: 0;
+  }
+  .tree-expand {
+    flex: none;
+    width: 30px;
+    height: 30px;
+    border-radius: 8px;
+    display: grid;
+    place-items: center;
+    font-weight: 800;
+    color: var(--ink-3);
+  }
+  .tree-expand:hover {
+    background: var(--paper-3);
+    color: var(--ink);
+  }
+  .tree-children {
+    margin: 0 0 4px 14px;
+    padding-left: 8px;
+    border-left: 2px solid var(--rule-soft);
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .tree-child {
+    font-size: 13px;
+    font-weight: 500;
+    padding: 7px 8px;
+  }
+  .tree-empty {
+    font-size: 12px;
+    margin: 2px 0 2px 8px;
+  }
+  .tree-sub {
+    font-size: 11px;
+    color: var(--ink-3);
+    font-weight: 600;
+  }
+  .tree-item .grow {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    display: flex;
+    flex-direction: column;
+  }
+  .side-reset {
+    margin-top: 8px;
+    align-self: flex-start;
+  }
+  .topic-scope {
+    margin-bottom: 8px;
+  }
+
+  /* ---- 検索式セレクト (作成フォーム用) ---- */
+  .combo {
+    position: relative;
+  }
+  .combo-input-wrap {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+  }
+  .combo-input {
+    flex: 1;
+    min-width: 0;
+  }
+  .combo-clear {
+    flex: none;
+  }
+  .combo-list {
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 0;
+    right: 0;
+    z-index: 20;
+    padding: 6px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    max-height: 260px;
+    overflow: auto;
+  }
+  .combo-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    text-align: left;
+    padding: 8px 10px;
+    border-radius: var(--r-sm);
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--ink-2);
+    width: 100%;
+  }
+  .combo-item:hover,
+  .combo-item.is-active {
+    background: var(--paper-3);
+  }
+  .combo-item.is-selected {
+    color: var(--ink);
+  }
+  .combo-item .grow {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    line-height: 1.3;
+  }
+  .combo-empty,
+  .combo-more {
+    margin: 4px 6px;
+    font-size: 12px;
   }
 }
