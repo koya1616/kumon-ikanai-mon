@@ -134,13 +134,6 @@
     background: var(--shu-soft);
     color: var(--shu);
   }
-  .side-hint {
-    margin: -4px 0 10px;
-    font-size: 12px;
-  }
-  .side-card {
-    border-left-width: 4px;
-  }
   .admin {
     display: grid;
     gap: 20px;
@@ -197,54 +190,6 @@
   .json-preview-item .muted {
     margin: 0;
   }
-  @media (min-width: 900px) {
-    .admin {
-      grid-template-columns: 320px 1fr;
-      align-items: start;
-    }
-    .admin-side {
-      position: sticky;
-      top: calc(var(--nav-h) + 20px);
-    }
-  }
-  .admin-side {
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-  }
-  .admin-side .card-pad {
-    padding: 14px;
-  }
-  .tree-level {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-  }
-  .tree-item {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 9px 10px;
-    border-radius: var(--r-sm);
-    text-align: left;
-    width: 100%;
-    font-weight: 600;
-    font-size: 14px;
-    color: var(--ink-2);
-  }
-  .tree-item:hover {
-    background: var(--paper-3);
-  }
-  .tree-item[aria-current="true"] {
-    background: var(--ink);
-    color: var(--paper);
-  }
-  .tree-item .count {
-    margin-left: auto;
-    font-size: 11px;
-    opacity: 0.7;
-    font-weight: 700;
-  }
   .tree-add {
     display: flex;
     gap: 6px;
@@ -265,20 +210,6 @@
     width: 16px;
     height: 16px;
   }
-  .side-title {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 8px;
-    font-size: 13px;
-    font-weight: 800;
-    color: var(--ink);
-    margin-bottom: 4px;
-  }
-  .side-title .chip {
-    font-size: 11px;
-  }
-
   .admin-main {
     display: flex;
     flex-direction: column;
@@ -449,12 +380,7 @@
   .stat-card.is-published .stat-num {
     color: var(--moegi);
   }
-  /* サイドの下書きドット + ミニチップ */
-  .draft-dot {
-    color: var(--yamabuki);
-    font-size: 10px;
-    margin-right: 4px;
-  }
+  /* ミニチップ */
   .chip-xs {
     font-size: 10px;
     padding: 2px 7px;
@@ -653,104 +579,10 @@
     padding: 6px 32px 6px 10px;
     font-size: 13px;
   }
-
-  /* ---- サイド explorer ---- */
-  .recent-chips {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
-  }
-  .recent-chip {
-    max-width: 100%;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  .recent-kind {
-    display: inline-grid;
-    place-items: center;
-    width: 18px;
-    height: 18px;
-    border-radius: 50%;
-    font-size: 10px;
-    font-weight: 800;
-  }
   .input-sm {
     min-height: 36px;
     padding: 6px 10px;
     font-size: 13px;
-  }
-  .tree-scroll {
-    max-height: 320px;
-    overflow: auto;
-    padding-right: 2px;
-  }
-  .tree-group {
-    border-radius: var(--r-sm);
-  }
-  .tree-group.is-current {
-    background: color-mix(in srgb, var(--ink) 5%, transparent);
-  }
-  .tree-row {
-    display: flex;
-    align-items: center;
-    gap: 2px;
-  }
-  .tree-row .tree-item {
-    flex: 1;
-    min-width: 0;
-  }
-  .tree-expand {
-    flex: none;
-    width: 30px;
-    height: 30px;
-    border-radius: 8px;
-    display: grid;
-    place-items: center;
-    font-weight: 800;
-    color: var(--ink-3);
-  }
-  .tree-expand:hover {
-    background: var(--paper-3);
-    color: var(--ink);
-  }
-  .tree-children {
-    margin: 0 0 4px 14px;
-    padding-left: 8px;
-    border-left: 2px solid var(--rule-soft);
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-  }
-  .tree-child {
-    font-size: 13px;
-    font-weight: 500;
-    padding: 7px 8px;
-  }
-  .tree-empty {
-    font-size: 12px;
-    margin: 2px 0 2px 8px;
-  }
-  .tree-sub {
-    font-size: 11px;
-    color: var(--ink-3);
-    font-weight: 600;
-  }
-  .tree-item .grow {
-    flex: 1;
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    display: flex;
-    flex-direction: column;
-  }
-  .side-reset {
-    margin-top: 8px;
-    align-self: flex-start;
-  }
-  .topic-scope {
-    margin-bottom: 8px;
   }
 
   /* ---- 検索式セレクト (作成フォーム用) ---- */

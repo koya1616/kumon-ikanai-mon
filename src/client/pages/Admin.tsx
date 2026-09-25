@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { ComponentProps, ReactNode } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router";
 import { api, QUESTIONS_PER_QUIZ } from "../api";
@@ -35,34 +35,6 @@ const matchesQuery = (haystacks: (string | undefined)[], q: string): boolean => 
   const parts = v.split(/\s+/).filter(Boolean);
   const hay = haystacks.filter(Boolean).join(" ").toLowerCase();
   return parts.every((p) => hay.includes(p));
-};
-
-interface RecentItem {
-  kind: "c" | "t" | "q";
-  id: number;
-  title: string;
-}
-
-const RECENT_KEY = "admin-recent-v1";
-
-const loadRecent = (): RecentItem[] => {
-  try {
-    const raw = localStorage.getItem(RECENT_KEY);
-    if (!raw) return [];
-    const arr = JSON.parse(raw) as RecentItem[];
-    return Array.isArray(arr) ? arr.slice(0, 8) : [];
-  } catch {
-    return [];
-  }
-};
-
-const pushRecent = (item: RecentItem): void => {
-  try {
-    const cur = loadRecent().filter((r) => !(r.kind === item.kind && r.id === item.id));
-    localStorage.setItem(RECENT_KEY, JSON.stringify([item, ...cur].slice(0, 8)));
-  } catch {
-    /* ignore */
-  }
 };
 
 type QuizFilter = "all" | QuizStatus | "incomplete";
@@ -173,21 +145,6 @@ export const Admin = () => {
     await resolveSelection();
   }, [invalidate, resolveSelection]);
 
-  // 最近見た項目を記録 (サイドの「最近」・ジャンプの初期表示用)
-  useEffect(() => {
-    if (!sel) return;
-    if (kind === "q") {
-      const q = sel.quizzes.find((x) => x.id === sel.quizId);
-      if (q) pushRecent({ kind: "q", id: q.id, title: q.title });
-    } else if (kind === "t") {
-      const t = sel.topics.find((x) => x.id === sel.topicId);
-      if (t) pushRecent({ kind: "t", id: t.id, title: t.title });
-    } else if (kind === "c") {
-      const c = sel.categories.find((x) => x.id === sel.catId);
-      if (c) pushRecent({ kind: "c", id: c.id, title: c.title });
-    }
-  }, [kind, sel]);
-
   const renameEntity = useCallback(
     (title: string, current: string, path: string) => {
       dialog({ title, input: { value: current }, okLabel: "保存" }).then((v) => {
@@ -267,44 +224,22 @@ export const Admin = () => {
           kind !== "new" &&
           (sel ? <AdminSteps sel={sel} /> : <p className="muted">読み込み中…</p>)}
       </header>
-      {kind === "import" || kind === "new" ? (
-        <div className="admin admin-single">
-          <div className="admin-main">
-            {!sel ? (
-              <Skeletons n={2} />
-            ) : (
-              <AdminMain
-                sel={sel}
-                kind={kind}
-                onRename={renameEntity}
-                onDelete={deleteEntity}
-                onEditQuiz={editQuizDialog}
-                onRefresh={refreshAll}
-              />
-            )}
-          </div>
+      <div className="admin admin-single">
+        <div className="admin-main">
+          {!sel ? (
+            <Skeletons n={2} />
+          ) : (
+            <AdminMain
+              sel={sel}
+              kind={kind}
+              onRename={renameEntity}
+              onDelete={deleteEntity}
+              onEditQuiz={editQuizDialog}
+              onRefresh={refreshAll}
+            />
+          )}
         </div>
-      ) : (
-        <div className="admin">
-          <aside className="admin-side">
-            {!sel ? <Skeletons n={2} /> : <AdminSide sel={sel} />}
-          </aside>
-          <div className="admin-main">
-            {!sel ? (
-              <Skeletons n={2} />
-            ) : (
-              <AdminMain
-                sel={sel}
-                kind={kind}
-                onRename={renameEntity}
-                onDelete={deleteEntity}
-                onEditQuiz={editQuizDialog}
-                onRefresh={refreshAll}
-              />
-            )}
-          </div>
-        </div>
-      )}
+      </div>
     </div>
   );
 };
@@ -448,250 +383,6 @@ const AdminSteps = ({ sel }: { sel: Selection }) => {
         </span>
       </li>
     </ol>
-  );
-};
-
-const AdminSide = ({ sel }: { sel: Selection }) => {
-  const navigate = useNavigate();
-  const cat = sel.categories.find((c) => c.id === sel.catId);
-  const [expanded, setExpanded] = useState<Set<number>>(
-    () => new Set(sel.catId != null ? [sel.catId] : []),
-  );
-  const [showAllTopics, setShowAllTopics] = useState(sel.catId == null);
-  const [recent, setRecent] = useState<RecentItem[]>(() => loadRecent());
-
-  useEffect(() => {
-    setShowAllTopics(sel.catId == null);
-  }, [sel.catId]);
-  useEffect(() => {
-    setRecent(loadRecent());
-  }, [sel.catId, sel.topicId, sel.quizId]);
-
-  const draftByCat = new Map<number, number>();
-  const incompleteByCat = new Map<number, number>();
-  const draftByTopic = new Map<number, number>();
-  const incompleteByTopic = new Map<number, number>();
-  for (const q of sel.allQuizzes) {
-    if (q.status === "draft") {
-      if (q.categoryId != null)
-        draftByCat.set(q.categoryId, (draftByCat.get(q.categoryId) ?? 0) + 1);
-      draftByTopic.set(q.topicId, (draftByTopic.get(q.topicId) ?? 0) + 1);
-    }
-    if (isIncomplete(q)) {
-      if (q.categoryId != null)
-        incompleteByCat.set(q.categoryId, (incompleteByCat.get(q.categoryId) ?? 0) + 1);
-      incompleteByTopic.set(q.topicId, (incompleteByTopic.get(q.topicId) ?? 0) + 1);
-    }
-  }
-  const topicsByCat = useMemo(() => {
-    const m = new Map<number, Topic[]>();
-    for (const t of sel.allTopics) {
-      const arr = m.get(t.categoryId) ?? [];
-      arr.push(t);
-      m.set(t.categoryId, arr);
-    }
-    return m;
-  }, [sel.allTopics]);
-
-  const topicScope =
-    showAllTopics || sel.catId == null ? sel.allTopics : (topicsByCat.get(sel.catId) ?? sel.topics);
-
-  const toggleExpand = (id: number) => {
-    setExpanded((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  };
-
-  const recentHref = (r: RecentItem) => `/admin/${r.kind}/${r.id}`;
-
-  return (
-    <>
-      {recent.length > 0 && (
-        <section className="card card-pad side-card" aria-label="最近見た項目">
-          <div className="side-title">
-            <span>🕘 最近</span>
-            <button
-              type="button"
-              className="btn btn-ghost btn-sm"
-              onClick={() => {
-                localStorage.removeItem(RECENT_KEY);
-                setRecent([]);
-              }}
-            >
-              クリア
-            </button>
-          </div>
-          <div className="recent-chips">
-            {recent.slice(0, 6).map((r) => (
-              <button
-                key={`${r.kind}-${r.id}`}
-                type="button"
-                className="chip chip-btn recent-chip"
-                title={r.title}
-                onClick={() => navigate(recentHref(r))}
-              >
-                <span
-                  className={`recent-kind kind-${r.kind === "c" ? "cat" : r.kind === "t" ? "topic" : "quiz"}`}
-                >
-                  {r.kind === "c" ? "分" : r.kind === "t" ? "中" : "問"}
-                </span>
-                {r.title}
-              </button>
-            ))}
-          </div>
-        </section>
-      )}
-      <section className="card card-pad side-card" aria-label="カテゴリ一覧">
-        <div className="side-title">
-          <span>
-            <span className="step-no step-no-sm">1</span> カテゴリ
-          </span>
-          <span className="chip">{sel.categories.length}件</span>
-        </div>
-        <p className="muted side-hint">大分類。›で中分類をのぞけます</p>
-        <div className="tree-level tree-scroll" role="list">
-          {sel.categories.map((c) => {
-            const drafts = draftByCat.get(c.id) ?? 0;
-            const incompletes = incompleteByCat.get(c.id) ?? 0;
-            const children = topicsByCat.get(c.id) ?? [];
-            const isOpen = expanded.has(c.id) || sel.catId === c.id;
-            const isCurrent = sel.catId === c.id;
-            return (
-              <div key={c.id} className={`tree-group${isCurrent ? " is-current" : ""}`}>
-                <div className="tree-row">
-                  <button
-                    type="button"
-                    className="tree-item grow"
-                    role="listitem"
-                    aria-current={isCurrent ? "true" : undefined}
-                    onClick={() => navigate(`/admin/c/${c.id}`)}
-                    title={drafts ? `下書き${drafts}件あり` : c.title}
-                  >
-                    <span className="grow">
-                      {drafts > 0 && (
-                        <span className="draft-dot" aria-hidden="true">
-                          ●
-                        </span>
-                      )}
-                      {c.title}
-                    </span>
-                    {drafts > 0 && <span className="chip chip-yamabuki chip-xs">下書{drafts}</span>}
-                    {drafts === 0 && incompletes > 0 && (
-                      <span className="chip chip-outline chip-xs">未完{incompletes}</span>
-                    )}
-                    <span className="count">{c.quizCount ?? 0}Q</span>
-                  </button>
-                  <button
-                    type="button"
-                    className="tree-expand"
-                    aria-expanded={isOpen}
-                    aria-label={`${c.title}の中分類を${isOpen ? "閉じる" : "開く"}`}
-                    title={`${children.length}トピック`}
-                    onClick={() => toggleExpand(c.id)}
-                  >
-                    {isOpen ? "▾" : "›"}
-                  </button>
-                </div>
-                {isOpen && (
-                  <div className="tree-children">
-                    {children.length === 0 && <p className="muted tree-empty">トピックなし</p>}
-                    {children.map((t) => (
-                      <button
-                        key={t.id}
-                        type="button"
-                        className="tree-item tree-child"
-                        aria-current={sel.topicId === t.id ? "true" : undefined}
-                        onClick={() => navigate(`/admin/t/${t.id}`)}
-                      >
-                        <span className="grow">{t.title}</span>
-                        <span className="count">{t.quizCount ?? 0}Q</span>
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-            );
-          })}
-          {!sel.categories.length && <p className="muted">まだありません</p>}
-        </div>
-        {sel.catId != null && (
-          <button
-            type="button"
-            className="btn btn-ghost btn-sm side-reset"
-            onClick={() => navigate("/admin")}
-          >
-            ✕ 選択を解除して全体を見る
-          </button>
-        )}
-      </section>
-
-      <section className="card card-pad side-card" aria-label="トピック一覧">
-        <div className="side-title">
-          <span>
-            <span className="step-no step-no-sm">2</span> トピック
-          </span>
-          <span className="chip">{topicScope.length}件</span>
-        </div>
-        <p className="muted side-hint">
-          {sel.catId != null && !showAllTopics
-            ? `「${cat?.title ?? ""}」の中分類`
-            : "全カテゴリ横断"}
-        </p>
-        <div className="topic-scope">
-          {sel.catId != null && (
-            <button
-              type="button"
-              className="chip chip-btn"
-              aria-pressed={showAllTopics ? "true" : "false"}
-              onClick={() => setShowAllTopics((v) => !v)}
-              title="カテゴリ内に絞るか全体から探すかを切り替え"
-            >
-              {showAllTopics ? "全体から探す中" : "この分類に絞り込み中"} · 切替
-            </button>
-          )}
-        </div>
-        <div className="tree-level tree-scroll" role="list">
-          {topicScope.slice(0, 60).map((t) => {
-            const drafts = draftByTopic.get(t.id) ?? 0;
-            const incompletes = incompleteByTopic.get(t.id) ?? 0;
-            const parent = sel.categories.find((c) => c.id === t.categoryId)?.title;
-            return (
-              <button
-                key={t.id}
-                type="button"
-                className="tree-item"
-                role="listitem"
-                aria-current={sel.topicId === t.id ? "true" : undefined}
-                onClick={() => navigate(`/admin/t/${t.id}`)}
-                title={drafts ? `下書き${drafts}件あり` : undefined}
-              >
-                <span className="grow">
-                  {drafts > 0 && (
-                    <span className="draft-dot" aria-hidden="true">
-                      ●
-                    </span>
-                  )}
-                  {t.title}
-                  {(showAllTopics || sel.catId == null) && parent && (
-                    <span className="tree-sub">{parent}</span>
-                  )}
-                </span>
-                {drafts > 0 && <span className="chip chip-yamabuki chip-xs">下書{drafts}</span>}
-                {drafts === 0 && incompletes > 0 && (
-                  <span className="chip chip-outline chip-xs">未完{incompletes}</span>
-                )}
-                <span className="count">{t.quizCount ?? 0}Q</span>
-              </button>
-            );
-          })}
-          {!topicScope.length && <p className="muted">まだありません</p>}
-          {topicScope.length > 60 && <p className="muted">最初の60件を表示中です</p>}
-        </div>
-      </section>
-    </>
   );
 };
 
