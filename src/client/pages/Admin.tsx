@@ -5,6 +5,7 @@ import { api, QUESTIONS_PER_QUIZ } from "../api";
 import type { Category, Quiz, QuizStatus, Topic } from "../api";
 import { useDialog } from "../dialog";
 import { Crumbs, EmptyState, Icon, Skeletons, Stars, StatusChip } from "../ui";
+import { RichSelect } from "../components/RichSelect";
 import { useToast } from "../toast";
 import { useTree } from "../tree";
 import { JsonImportCard } from "./JsonImport";
@@ -281,6 +282,12 @@ const ManageSubTabs = ({ kind, sel }: { kind: Kind; sel: Selection }) => {
   );
 };
 
+const QUIZ_STATUS_LABEL: Record<Quiz["status"], string> = {
+  published: "公開中",
+  draft: "下書き",
+  archived: "終了",
+};
+
 const AdminSteps = ({ sel }: { sel: Selection }) => {
   const navigate = useNavigate();
   // クイック切替用: 今の文脈に合う候補だけに絞る
@@ -292,7 +299,6 @@ const AdminSteps = ({ sel }: { sel: Selection }) => {
       : sel.catId != null
         ? sel.allQuizzes.filter((z) => z.categoryId === sel.catId)
         : sel.allQuizzes;
-  const cat = sel.categories.find((c) => c.id === sel.catId);
   return (
     <ol className="steps steps-jump" aria-label="管理の手順 (直接切り替えできます)">
       <li
@@ -303,24 +309,25 @@ const AdminSteps = ({ sel }: { sel: Selection }) => {
           <span className="step-no">{sel.catId != null ? "✓" : "1"}</span>
           <span className="step-body">
             <span className="step-label">1 · カテゴリ ({sel.categories.length})</span>
-            <select
-              className="select select-sm step-select"
-              aria-label="カテゴリを直接切り替え"
-              value={sel.catId ?? ""}
-              onChange={(e) => {
-                const v = e.target.value;
-                if (v === "") navigate("/admin");
-                else navigate(`/admin/c/${Number(v)}`);
-              }}
-            >
-              <option value="">カテゴリを選ぶ…</option>
-              {sel.categories.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.title} ({c.quizCount ?? 0}Q)
-                </option>
-              ))}
-            </select>
-            {cat && <span className="step-value">{cat.title}</span>}
+            <div className="step-select">
+              <RichSelect
+                value={sel.catId ?? ""}
+                ariaLabel="カテゴリを直接切り替え"
+                placeholder="カテゴリを選ぶ…"
+                clearable={sel.catId != null}
+                options={sel.categories.map((c) => ({
+                  value: c.id,
+                  label: c.title,
+                  sub: `${c.topicCount ?? 0}トピック · ${c.questionCount ?? 0}問`,
+                  countText: `${c.quizCount ?? 0}Q`,
+                  countStatus: (c.quizCount ?? 0) > 0 ? "muted" : "warn",
+                }))}
+                onChange={(v) => {
+                  if (v === "") navigate("/admin");
+                  else navigate(`/admin/c/${v}`);
+                }}
+              />
+            </div>
           </span>
         </span>
       </li>
@@ -332,25 +339,25 @@ const AdminSteps = ({ sel }: { sel: Selection }) => {
           <span className="step-no">{sel.topicId != null ? "✓" : "2"}</span>
           <span className="step-body">
             <span className="step-label">2 · トピック ({topicOptions.length})</span>
-            <select
-              className="select select-sm step-select"
-              aria-label="トピックを直接切り替え"
-              value={sel.topicId ?? ""}
-              disabled={sel.catId == null && topicOptions.length === 0}
-              onChange={(e) => {
-                const v = e.target.value;
-                if (v !== "") navigate(`/admin/t/${Number(v)}`);
-              }}
-            >
-              <option value="">
-                {sel.catId == null ? "全トピックから選ぶ…" : "トピックを選ぶ…"}
-              </option>
-              {topicOptions.map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.title}
-                </option>
-              ))}
-            </select>
+            <div className="step-select">
+              <RichSelect
+                value={sel.topicId ?? ""}
+                ariaLabel="トピックを直接切り替え"
+                placeholder={sel.catId == null ? "全トピックから選ぶ…" : "トピックを選ぶ…"}
+                disabled={sel.catId == null && topicOptions.length === 0}
+                options={topicOptions.map((t) => ({
+                  value: t.id,
+                  label: t.title,
+                  sub: t.categoryTitle ?? `${t.quizCount ?? 0}Q`,
+                  countText: `${t.quizCount ?? 0}Q`,
+                  countStatus: (t.quizCount ?? 0) > 0 ? "muted" : "warn",
+                  keywords: t.categoryTitle,
+                }))}
+                onChange={(v) => {
+                  if (v !== "") navigate(`/admin/t/${v}`);
+                }}
+              />
+            </div>
           </span>
         </span>
       </li>
@@ -362,23 +369,29 @@ const AdminSteps = ({ sel }: { sel: Selection }) => {
           <span className="step-no">{sel.quizId != null ? "✓" : "3"}</span>
           <span className="step-body">
             <span className="step-label">3 · クイズ・問題 ({quizOptions.length})</span>
-            <select
-              className="select select-sm step-select"
-              aria-label="クイズを直接切り替え"
-              value={sel.quizId ?? ""}
-              disabled={quizOptions.length === 0}
-              onChange={(e) => {
-                const v = e.target.value;
-                if (v !== "") navigate(`/admin/q/${Number(v)}`);
-              }}
-            >
-              <option value="">クイズを選ぶ…</option>
-              {quizOptions.map((z) => (
-                <option key={z.id} value={z.id}>
-                  {z.title} ({z.questionCount}/{QUESTIONS_PER_QUIZ})
-                </option>
-              ))}
-            </select>
+            <div className="step-select">
+              <RichSelect
+                value={sel.quizId ?? ""}
+                ariaLabel="クイズを直接切り替え"
+                placeholder="クイズを選ぶ…"
+                disabled={quizOptions.length === 0}
+                options={quizOptions.map((z) => {
+                  const done = z.questionCount >= QUESTIONS_PER_QUIZ;
+                  return {
+                    value: z.id,
+                    label: z.title,
+                    sub: `${z.topicTitle ?? ""} · ★${z.difficulty} · ${QUIZ_STATUS_LABEL[z.status] ?? z.status}${done ? "" : " · 未完成"}`,
+                    countText: `${z.questionCount}/${QUESTIONS_PER_QUIZ}`,
+                    countStatus: done ? "ok" : "warn",
+                    progress: Math.min(1, z.questionCount / QUESTIONS_PER_QUIZ),
+                    keywords: `${z.topicTitle ?? ""} ${z.categoryTitle ?? ""}`,
+                  };
+                })}
+                onChange={(v) => {
+                  if (v !== "") navigate(`/admin/q/${v}`);
+                }}
+              />
+            </div>
           </span>
         </span>
       </li>

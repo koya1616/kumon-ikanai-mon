@@ -153,15 +153,49 @@
   }
   .select {
     appearance: none;
-    padding-right: 36px;
+    -webkit-appearance: none;
+    padding-right: 38px;
+    font-weight: 600;
+    color: var(--ink-2);
+    cursor: pointer;
+    background-color: var(--paper-2);
     background-image:
+      linear-gradient(180deg, rgba(255, 255, 255, 0.5), transparent 55%),
       linear-gradient(45deg, transparent 50%, var(--ink-3) 50%),
       linear-gradient(135deg, var(--ink-3) 50%, transparent 50%);
     background-position:
-      calc(100% - 18px) 50%,
-      calc(100% - 13px) 50%;
-    background-size: 5px 5px;
+      0 0,
+      calc(100% - 19px) 50%,
+      calc(100% - 14px) 50%;
+    background-size:
+      100% 100%,
+      5px 5px,
+      5px 5px;
     background-repeat: no-repeat;
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.55),
+      0 1px 2px rgba(31, 26, 23, 0.06);
+  }
+  .select:hover:not(:disabled) {
+    border-color: var(--ink-3);
+    color: var(--ink);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.55),
+      0 2px 8px rgba(31, 26, 23, 0.08);
+  }
+  .select:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+  }
+  /* option 自体は OS ポップアップのため装飾は色程度に留める */
+  .select option {
+    background: var(--paper-2);
+    color: var(--ink-2);
+    font-weight: 600;
+  }
+  .select option:checked {
+    background: var(--ai-soft);
+    color: var(--ink);
   }
   .search {
     display: flex;
@@ -463,5 +497,305 @@
     color: var(--ink-3);
     text-align: center;
     line-height: 1.5;
+  }
+
+  /* ---- rich select (カスタム listbox。標準 option では出せない装飾用) ---- */
+  .rich-select {
+    position: relative;
+    width: 100%;
+  }
+  .rich-trigger {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    min-height: 44px;
+    padding: 8px 10px 8px 12px;
+    border-radius: var(--r-md);
+    border: 1.5px solid var(--rule);
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.55), transparent 60%), var(--paper-2);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.55),
+      0 1px 2px rgba(31, 26, 23, 0.06);
+    cursor: pointer;
+    text-align: left;
+    transition:
+      border-color 0.15s var(--ease),
+      box-shadow 0.15s var(--ease),
+      transform 0.12s var(--ease);
+  }
+  .rich-select.is-sm .rich-trigger {
+    min-height: 38px;
+    padding: 6px 8px 6px 10px;
+    border-radius: 11px;
+  }
+  .rich-trigger:hover:not(:disabled) {
+    border-color: var(--ink-3);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.55),
+      0 2px 8px rgba(31, 26, 23, 0.1);
+  }
+  .rich-trigger:focus-visible {
+    outline: none;
+    border-color: var(--ai);
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--ai) 20%, transparent);
+  }
+  .rich-select.is-open .rich-trigger {
+    border-color: var(--ai);
+    box-shadow:
+      0 0 0 4px color-mix(in srgb, var(--ai) 16%, transparent),
+      0 4px 14px rgba(31, 26, 23, 0.1);
+  }
+  .rich-trigger:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+  }
+  .rich-trigger-body {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    line-height: 1.3;
+  }
+  .rich-trigger-label {
+    font-size: 13px;
+    font-weight: 800;
+    color: var(--ink);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .rich-trigger-sub {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--ink-3);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .rich-trigger-placeholder {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--ink-3);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .rich-chevron {
+    width: 16px;
+    height: 16px;
+    flex: none;
+    color: var(--ink-3);
+    transition: transform 0.18s var(--ease);
+  }
+  .rich-select.is-open .rich-chevron {
+    transform: rotate(180deg);
+    color: var(--ai);
+  }
+  .rich-clear {
+    flex: none;
+    display: grid;
+    place-items: center;
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    font-size: 11px;
+    font-weight: 800;
+    color: var(--ink-3);
+    background: var(--paper-3);
+    border: 1px solid var(--rule-soft);
+    cursor: pointer;
+  }
+  .rich-clear:hover {
+    color: var(--shu);
+    border-color: var(--shu);
+  }
+  .rich-dot {
+    flex: none;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--rule);
+  }
+  .rich-dot.is-none {
+    visibility: hidden;
+  }
+  .rich-dot.is-ok {
+    background: var(--moegi);
+    box-shadow: 0 0 0 3px var(--moegi-soft);
+  }
+  .rich-dot.is-warn {
+    background: var(--yamabuki);
+    box-shadow: 0 0 0 3px var(--yamabuki-soft);
+  }
+  .rich-dot.is-bad {
+    background: var(--shu);
+    box-shadow: 0 0 0 3px var(--shu-soft);
+  }
+  .rich-dot.is-muted {
+    background: var(--ink-3);
+  }
+  .rich-count {
+    flex: none;
+    font-size: 11px;
+    font-weight: 800;
+    font-variant-numeric: tabular-nums;
+    padding: 2px 8px;
+    border-radius: var(--r-pill);
+    border: 1px solid var(--rule-soft);
+    background: var(--paper-3);
+    color: var(--ink-2);
+  }
+  .rich-count.is-ok {
+    background: var(--moegi-soft);
+    border-color: transparent;
+    color: var(--moegi);
+  }
+  .rich-count.is-warn {
+    background: var(--yamabuki-soft);
+    border-color: transparent;
+    color: color-mix(in srgb, var(--yamabuki) 72%, var(--ink));
+  }
+  .rich-count.is-bad {
+    background: var(--shu-soft);
+    border-color: transparent;
+    color: var(--shu);
+  }
+  .rich-pop {
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 0;
+    right: 0;
+    z-index: 30;
+    padding: 8px;
+    animation: rich-pop-in 0.16s var(--ease);
+  }
+  @keyframes rich-pop-in {
+    from {
+      opacity: 0;
+      transform: translateY(-4px) scale(0.99);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+  .rich-search {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 8px;
+    margin-bottom: 6px;
+    border: 1px solid var(--rule-soft);
+    border-radius: var(--r-sm);
+    background: var(--paper);
+  }
+  .rich-search svg {
+    width: 15px;
+    height: 15px;
+    flex: none;
+    color: var(--ink-3);
+  }
+  .rich-search input {
+    flex: 1;
+    min-width: 0;
+    border: 0;
+    background: transparent;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--ink);
+  }
+  .rich-search input:focus {
+    outline: none;
+  }
+  .rich-search-clear {
+    flex: none;
+    border: 0;
+    background: transparent;
+    color: var(--ink-3);
+    font-size: 12px;
+    cursor: pointer;
+    padding: 2px 4px;
+  }
+  .rich-list {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    max-height: 264px;
+    overflow: auto;
+    padding: 2px;
+  }
+  .rich-option {
+    display: flex;
+    align-items: flex-start;
+    gap: 9px;
+    width: 100%;
+    text-align: left;
+    padding: 8px 9px;
+    border-radius: var(--r-sm);
+    border: 1px solid transparent;
+    cursor: pointer;
+    transition: background 0.12s var(--ease);
+  }
+  .rich-option:hover,
+  .rich-option.is-active {
+    background: var(--paper-3);
+  }
+  .rich-option.is-selected {
+    background: var(--ai-soft);
+    border-color: color-mix(in srgb, var(--ai) 32%, transparent);
+  }
+  .rich-option:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+  .rich-option .grow {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    line-height: 1.35;
+  }
+  .rich-option-label {
+    font-size: 13.5px;
+    font-weight: 700;
+    color: var(--ink);
+    overflow-wrap: anywhere;
+  }
+  .rich-option-sub {
+    font-size: 11.5px;
+    font-weight: 600;
+    color: var(--ink-3);
+    overflow-wrap: anywhere;
+  }
+  .rich-bar {
+    display: block;
+    height: 4px;
+    margin-top: 5px;
+    border-radius: 999px;
+    background: var(--rule-soft);
+    overflow: hidden;
+  }
+  .rich-bar > span {
+    display: block;
+    height: 100%;
+    border-radius: inherit;
+    background: linear-gradient(90deg, var(--moegi), var(--yamabuki));
+  }
+  .rich-check {
+    flex: none;
+    font-weight: 900;
+    font-size: 13px;
+    color: var(--ai);
+  }
+  .rich-empty {
+    margin: 6px;
+    font-size: 12px;
+  }
+  .rich-foot {
+    margin: 6px 4px 2px;
+    font-size: 11px;
+    font-weight: 600;
   }
 }
