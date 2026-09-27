@@ -81,6 +81,7 @@
     color: var(--paper);
   }
   .step-body {
+    flex: 1;
     display: flex;
     flex-direction: column;
     min-width: 0;
@@ -573,6 +574,8 @@
   .step-select {
     margin-top: 6px;
     font-size: 13px;
+    width: 100%;
+    max-width: 100%;
   }
   .select-sm {
     min-height: 36px;
