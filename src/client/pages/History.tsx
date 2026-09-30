@@ -15,6 +15,7 @@ import type {
   QuizMeta,
 } from "../api";
 import { BookmarkButton } from "../bookmark";
+import { DeletableButton } from "../deletable";
 import { ClozeStatement } from "../cloze";
 import { OrderBlocks } from "../order";
 import { CorrectAnswerBlock, ExplanationBody } from "../components/AnswerSheet";
@@ -449,6 +450,7 @@ const QuestionRow = ({
           <RichText text={q.statement} />
         </div>
         <BookmarkButton questionId={q.questionId} />
+        <DeletableButton questionId={q.questionId} />
       </div>
       <div className="hx-q-meta">
         <span
@@ -710,6 +712,7 @@ const AttemptPanel = ({
                     </span>
                   </span>
                   <BookmarkButton questionId={it.questionId} />
+                  <DeletableButton questionId={it.questionId} />
                 </div>
                 <div className="review-body">
                   {isCloze(it.questionType) ? (

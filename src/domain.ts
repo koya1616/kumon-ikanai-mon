@@ -94,6 +94,8 @@ export interface Question {
   /** order_blocks の正順ブロック (正解順。他型では空) */
   items: string[];
   explanation: string;
+  /** 消しても良いかもフラグ (デフォルトfalse) */
+  deletable: boolean;
 }
 
 /** 解答用 (答え・解説なし) */
@@ -204,6 +206,11 @@ export const questionSchema = z.object({
 
 export const questionCreateSchema = questionSchema.extend({
   quizId: z.coerce.number().int().positive({ message: "quizIdが必要です" }),
+});
+
+/** 問題単体の「消しても良いかも」フラグ更新用 (デフォルトoff) */
+export const questionDeletableSchema = z.object({
+  deletable: z.coerce.boolean(),
 });
 
 export const questionBatchSchema = z.object({

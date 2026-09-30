@@ -9,6 +9,7 @@ import { RichText } from "../rich";
 import { usePlaySession } from "../session";
 import type { SessionAnswer } from "../session";
 import { BookmarkButton } from "../bookmark";
+import { DeletableButton } from "../deletable";
 import { Crumbs, fmtDate, Ring, Stars } from "../ui";
 import { messageOf, toneOf } from "../lib/display";
 import { toDisplayStatement } from "../components/quiz-ui";
@@ -308,6 +309,7 @@ const ReviewCard = ({
           </span>
         </span>
         <BookmarkButton questionId={a.q.questionId} />
+        <DeletableButton questionId={a.q.questionId} />
       </summary>
       <div className="review-body">
         {isCloze(a.q.questionType) ? (

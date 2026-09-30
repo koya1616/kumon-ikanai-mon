@@ -19,6 +19,7 @@ import {
   orderQuestionCreateSchema,
   orderQuestionSchema,
   questionCreateSchema,
+  questionDeletableSchema,
   questionSchema,
   quizBodySchema,
   quizPatchSchema,
@@ -435,11 +436,35 @@ async function route(req: Request, env: Env): Promise<Response> {
     }
   }
 
+  // 問題単体のフラグ参照 (回答画面のトグル表示用。答え・解説は返さない)
   {
     const m = /^\/api\/questions\/([^/]+)$/.exec(path);
-    if (m && (method === "PUT" || method === "DELETE")) {
+    if (m && method === "GET") {
       const questionId = parseIdParam(m[1]!);
       if (questionId === undefined) return json({ error: "idが不正です" }, 400);
+      const deletable = await repo.getQuestionDeletable(db, questionId);
+      if (deletable === null) return json({ error: "問題がありません" }, 404);
+      return json({ id: questionId, deletable });
+    }
+  }
+
+  {
+    const m = /^\/api\/questions\/([^/]+)$/.exec(path);
+    if (m && (method === "PUT" || method === "DELETE" || method === "PATCH")) {
+      const questionId = parseIdParam(m[1]!);
+      if (questionId === undefined) return json({ error: "idが不正です" }, 400);
+      if (method === "PATCH") {
+        const body = await readJson(req);
+        if ("res" in body) return body.res;
+        const v = validated(questionDeletableSchema.safeParse(body.value));
+        if ("res" in v) return v.res;
+        try {
+          await repo.setQuestionDeletable(db, questionId, v.data.deletable);
+        } catch (e) {
+          return json({ error: (e as Error).message }, 404);
+        }
+        return json({ ok: true, deletable: v.data.deletable });
+      }
       if (method === "PUT") {
         const body = await readJson(req);
         if ("res" in body) return body.res;

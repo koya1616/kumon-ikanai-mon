@@ -6,6 +6,7 @@ import { Link, useNavigate, useSearchParams } from "react-router";
 import { api, isCloze, isOrder } from "../api";
 import type { MistakeItem, ReviewAnswerResult } from "../api";
 import { BookmarkButton } from "../bookmark";
+import { DeletableButton } from "../deletable";
 import { useDialogOpen } from "../dialog";
 import { ClozeFieldList, ClozeStatement } from "../cloze";
 import { OrderBlocks } from "../order";
@@ -515,6 +516,7 @@ export const Review = () => {
               </h1>
               <div className="row">
                 <BookmarkButton questionId={target.questionId} />
+                <DeletableButton questionId={target.questionId} />
                 <button
                   type="button"
                   className="btn btn-sm btn-ghost"

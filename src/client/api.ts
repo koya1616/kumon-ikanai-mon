@@ -80,6 +80,8 @@ export interface Question {
   /** order_blocks の正順ブロック (他型では空配列) */
   items: string[];
   explanation: string;
+  /** 消しても良いかもフラグ (デフォルトfalse) */
+  deletable: boolean;
 }
 
 export interface PlayQuestion {

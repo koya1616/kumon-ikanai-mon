@@ -11,6 +11,7 @@ import { RichText } from "../rich";
 import { usePlaySession } from "../session";
 import type { PlaySession } from "../session";
 import { BookmarkButton } from "../bookmark";
+import { DeletableButton } from "../deletable";
 import { EmptyState, Icon, Stars } from "../ui";
 import { useToast } from "../toast";
 import { useTree } from "../tree";
@@ -521,6 +522,7 @@ const PlayingScreen = ({ play, onChange }: { play: LivePlay; onChange: (p: LiveP
           <div className="q-wrap">
             <div className="q-num">
               第 {play.index + 1} 問 <BookmarkButton questionId={q.questionId} />
+              <DeletableButton questionId={q.questionId} />
             </div>
             {!cloze && (
               <h1 className="q-statement rich">

@@ -509,6 +509,26 @@ export async function updateOrderQuestion(db: DB, id: number, q: NewOrderQuestio
   await insertOrderVersion(db, id, q);
 }
 
+/** 管理用: 「消しても良いかも」フラグ更新 (versionは発行しない) */
+export async function setQuestionDeletable(db: DB, id: number, deletable: boolean): Promise<void> {
+  const row = await db.prepare("SELECT id FROM questions WHERE id = ?").bind(id).first();
+  if (!row) throw new Error("問題がありません");
+  await db
+    .prepare("UPDATE questions SET deletable = ?, updated_at = datetime('now') WHERE id = ?")
+    .bind(deletable ? 1 : 0, id)
+    .run();
+}
+
+/** 問題単体のフラグ参照用 (回答画面のトグル表示用。存在しない場合はnull) */
+export async function getQuestionDeletable(db: DB, id: number): Promise<boolean | null> {
+  const row = await db
+    .prepare("SELECT deletable FROM questions WHERE id = ?")
+    .bind(id)
+    .first<{ deletable: number | null }>();
+  if (!row) return null;
+  return Number(row.deletable ?? 0) === 1;
+}
+
 /** 管理用: 1問削除 (履歴ありはDBのRESTRICTで失敗する) */
 export async function deleteQuestion(db: DB, id: number): Promise<void> {
   await db.prepare("DELETE FROM questions WHERE id = ?").bind(id).run();
@@ -522,6 +542,7 @@ type VersionRow = {
   questionType: QuestionType;
   statement: string;
   explanation: string;
+  deletable: number;
 };
 
 async function assembleQuestions(db: DB, versionRows: VersionRow[]): Promise<Question[]> {
@@ -570,6 +591,7 @@ async function assembleQuestions(db: DB, versionRows: VersionRow[]): Promise<Que
       blanks,
       items: orderByVersion.get(r.questionVersionId) ?? [],
       explanation: r.explanation,
+      deletable: Number(r.deletable ?? 0) === 1,
     };
   });
 }
@@ -578,6 +600,7 @@ export async function listQuestionsByQuiz(db: DB, quizId: number): Promise<Quest
   const { results } = await db
     .prepare(
       `SELECT q.id AS "questionId", q.quiz_id AS "quizId",
+        q.deletable AS "deletable",
         v.id AS "questionVersionId", v.version AS "version",
         v.question_type AS "questionType",
         v.statement AS "statement", v.explanation AS "explanation"

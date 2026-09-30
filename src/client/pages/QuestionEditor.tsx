@@ -32,6 +32,8 @@ interface Draft {
   answers: string[];
   items: string[];
   explanation: string;
+  /** 消しても良いかもフラグ (デフォルトfalse。登録済みのみサーバと同期) */
+  deletable: boolean;
 }
 
 const blankDraft = (): Draft => ({
@@ -43,6 +45,7 @@ const blankDraft = (): Draft => ({
   answers: [""],
   items: Array(ORDER_MIN_ITEMS).fill(""),
   explanation: "",
+  deletable: false,
 });
 
 /** statement中のマーカー番号 */
@@ -84,6 +87,7 @@ export const QuestionEditor = ({ quiz, onSaved }: { quiz: Quiz; onSaved: () => v
   const [cur, setCur] = useState(0);
   const [loadError, setLoadError] = useState("");
   const [saving, setSaving] = useState(false);
+  const [flagBusy, setFlagBusy] = useState(false);
   const [uploading, setUploading] = useState(false);
   const explanationRef = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -111,6 +115,7 @@ export const QuestionEditor = ({ quiz, onSaved }: { quiz: Quiz; onSaved: () => v
                       q.blanks && q.blanks.length ? q.blanks.map((b) => b.answer ?? "") : [""],
                     items: Array(ORDER_MIN_ITEMS).fill(""),
                     explanation: q.explanation ?? "",
+                    deletable: q.deletable ?? false,
                   }
                 : isOrder(q.questionType)
                   ? {
@@ -128,6 +133,7 @@ export const QuestionEditor = ({ quiz, onSaved }: { quiz: Quiz; onSaved: () => v
                               ORDER_MIN_ITEMS,
                             ),
                       explanation: q.explanation ?? "",
+                      deletable: q.deletable ?? false,
                     }
                   : {
                       id: q.id,
@@ -143,6 +149,7 @@ export const QuestionEditor = ({ quiz, onSaved }: { quiz: Quiz; onSaved: () => v
                       answers: [""],
                       items: Array(ORDER_MIN_ITEMS).fill(""),
                       explanation: q.explanation ?? "",
+                      deletable: q.deletable ?? false,
                     }
               : blankDraft(),
           );
@@ -185,10 +192,34 @@ export const QuestionEditor = ({ quiz, onSaved }: { quiz: Quiz; onSaved: () => v
   if (!drafts) return <Skeletons n={2} />;
 
   const done = drafts.filter(isComplete).length;
+  const deletableCount = drafts.filter((x) => x.deletable).length;
   const d = drafts[cur]!;
 
   const patch = (i: number, p: Partial<Draft>) =>
     setDrafts((prev) => (prev ? prev.map((x, k) => (k === i ? { ...x, ...p } : x)) : prev));
+
+  /** 「消しても良いかも」フラグ切替 (登録済みのみ即時保存。versionは発行しない) */
+  const toggleDeletable = (index: number, next: boolean) => {
+    const target = drafts[index];
+    if (!target?.id) return;
+    const questionId = target.id;
+    setFlagBusy(true);
+    api<{ ok: true; deletable: boolean }>(`/api/questions/${questionId}`, {
+      method: "PATCH",
+      body: { deletable: next },
+    })
+      .then(() => {
+        setDrafts((prev) => {
+          if (!prev) return prev;
+          const updated = prev.map((x, k) => (k === index ? { ...x, deletable: next } : x));
+          setPristine(JSON.stringify(updated));
+          return updated;
+        });
+        toast(next ? "「消しても良いかも」に設定しました" : "フラグを外しました", "ok");
+      })
+      .catch((e: Error) => toast(e.message, "ng"))
+      .finally(() => setFlagBusy(false));
+  };
 
   /** 解説用画像をR2に登録し、記法を解説文に挿入する */
   const uploadImage = async (file: File, index: number) => {
@@ -322,10 +353,15 @@ export const QuestionEditor = ({ quiz, onSaved }: { quiz: Quiz; onSaved: () => v
             <button
               key={i}
               type="button"
-              className={"qpill" + (isComplete(x) ? " is-done" : isBlank(x) ? "" : " is-partial")}
+              className={
+                "qpill" +
+                (isComplete(x) ? " is-done" : isBlank(x) ? "" : " is-partial") +
+                (x.deletable ? " is-deletable" : "")
+              }
               role="tab"
               aria-current={i === cur ? "true" : undefined}
-              aria-label={`第${i + 1}問`}
+              aria-label={`第${i + 1}問${x.deletable ? "（消しても良いかも）" : ""}`}
+              title={x.deletable ? "消しても良いかも" : undefined}
               onClick={() => setCur(i)}
             >
               {i + 1}
@@ -338,6 +374,20 @@ export const QuestionEditor = ({ quiz, onSaved }: { quiz: Quiz; onSaved: () => v
         <div className="row wrap">
           <span className="q-num">第 {cur + 1} 問</span>
           <span className="muted">{d.id ? `登録済み (ID ${d.id})` : "未登録"}</span>
+          {d.id ? (
+            <label className="row" style={{ gap: 6, cursor: "pointer" }}>
+              <input
+                type="checkbox"
+                checked={d.deletable}
+                disabled={flagBusy}
+                aria-label="消しても良いかも"
+                onChange={(e) => toggleDeletable(cur, e.target.checked)}
+              />
+              <span>消しても良いかも</span>
+            </label>
+          ) : (
+            <span className="muted">フラグは保存後に設定できます</span>
+          )}
           <span className="grow" />
           <button
             type="button"
@@ -351,6 +401,7 @@ export const QuestionEditor = ({ quiz, onSaved }: { quiz: Quiz; onSaved: () => v
                 answers: [""],
                 items: Array(ORDER_MIN_ITEMS).fill(""),
                 explanation: "",
+                deletable: false,
               })
             }
           >
@@ -683,6 +734,7 @@ export const QuestionEditor = ({ quiz, onSaved }: { quiz: Quiz; onSaved: () => v
       <div className="save-bar">
         <div className={`status${dirty ? " is-dirty" : ""}`}>
           完成 {done} / {QUESTIONS_PER_QUIZ}
+          {deletableCount > 0 && ` · 消しても良いかも ${deletableCount}件`}
           {dirty ? " · 未保存の変更があります" : ""}
         </div>
         <Link className="btn btn-ghost btn-sm" to={`/admin/t/${quiz.topicId}`}>
